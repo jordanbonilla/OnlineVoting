@@ -8,7 +8,7 @@
 # Summary:
 This framework interfaces Google surveys with Python for a clean front end and back end. The voting system uses the IRV (instnt runoff voting) strategy. The workflow can be summarazed as:
 
-1. Manually create a Google survey and link it to a Google spreadsheet. Enter this information into the Python script.
+1. Manually create a Google survey and link it to a Google spreadsheet. Enter the link to the survey into the Python script.
 
 2. Python script generates unique links to the survey and emails out links. One link per email addresses. These links can be hardcoded or read from a Google doc (default)
 
