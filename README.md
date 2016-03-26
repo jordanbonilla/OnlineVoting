@@ -6,7 +6,7 @@
 3. Avery House glory.
 
 # Summary:
-This framework interfaces Google surveys with Python for a clean front end and back end. The voting system uses the IRV (instnt runoff voting) strategy. The workflow can be summarazed as:
+This framework interfaces Google surveys with Python for a clean front end and back end. The voting system uses the IRV (instnt runoff voting) strategy. The workflow can be summarized as:
 
 1. Manually create a Google survey and link it to a Google spreadsheet. Enter the link to the survey into the Python script.
 
@@ -14,7 +14,7 @@ This framework interfaces Google surveys with Python for a clean front end and b
 
 3. Results automatically go into the linked Google Spreadsheet
 
-4. When the voting period has ended, the Python script reads in the results from this spreadsheet, parses it, and calculate the winners based on instant runoff. The results are automatically emailed out.
+4. When the voting period has ended, the Python script reads in the results from this spreadsheet, parses it, and calculates the winners based on instant runoff. The results are automatically emailed out.
 
 
 # Security and anonymity:
@@ -27,7 +27,7 @@ This framework interfaces Google surveys with Python for a clean front end and b
 
 3. Votes that are manually added to the spreadsheet will not have a valid 128-digit entry and will be invalidated in the final count. Votes that are deleted from the spreadsheet will raise attention since the email with the election results will contain a list of all data from the vote, including the IDs associated with each vote. If someone believes their vote has been deleted, they can compare their voter ID (in the email) with the voter IDs found in the raw vote data which is automatically emailed at the end of a vote.
 
-4. Adding non-eligible emails to the eligible voter list is easily spotted since the email with the results also contains a list of all emails (xlsx format) that participated in the survey. ALl eligible voters are emailed the raw vote data (xlsx format) in the results email. 
+4. Adding non-eligible emails to the eligible voter list is easily spotted since the email with the results also contains a list of all emails (xlsx format) that participated in the survey. All eligible voters are emailed the raw vote data (xlsx format) in the results email. 
 
 
 
