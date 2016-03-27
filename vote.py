@@ -564,7 +564,7 @@ num_positions, num_responses):
 # Entry point
 if __name__ == "__main__":
 	# URL retrived from manually-created Google survey 
-	survey_url = raw_input('Enter survey URL:') #https://docs.google.com/forms/d/1Ql535WTs_w4UMFfdrwqx1-dxxPhSXO22jd80Hg6VpzQ/viewform?entry.1388757669='
+	survey_url = raw_input('Enter survey URL:')
 	if(survey_url[-1] != '='):
 		print_write('FATAL: Invalid spreadsheet URL, did you remember to change the URL to pre-fill ID?')
 		sys.exit(-1)
@@ -572,7 +572,7 @@ if __name__ == "__main__":
 		print_write("FATAL: Invalid spreadsheet URL. Please check for typos.")
 		sys.exit(-1)
 	# Title of worksheet. Established when creating the worksheet via Google form creation
-	worksheet_title = raw_input('Enter worksheet title:') #"Voting Results"
+	worksheet_title = raw_input('Enter worksheet title:')
 	try:
 		scopes = [ "https://docs.google.com/feeds/ https://spreadsheets.google.com/feeds/"]
 		credentials = ServiceAccountCredentials.from_json_keyfile_name(
@@ -590,7 +590,7 @@ if __name__ == "__main__":
 		print_write("Invalid worksheet name. Exiting")
 		sys.exit(-1)
 	# Password known by all members of the ExComm
-	gmail_password = getpass.getpass('[ECHO DISABLED] Enter averyexcomm password:') #"makeaverygreatagain"
+	gmail_password = getpass.getpass('[ECHO DISABLED] Enter averyexcomm password:')
 	try:
 		sender = "averyexcomm@gmail.com"
 		server = smtplib.SMTP("smtp.gmail.com", 587)
