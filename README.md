@@ -48,14 +48,14 @@ This framework interfaces Google surveys with Python for a clean front end and b
       - The survey must be a multiple choice grid 
       - For every candidate, make a new column with a "rank"
       - Ranks go from 1 to num_candidates with 1 being the best
-      - Toggle option: 1 response per column
-      - Toggle option: Specify to shuffle row order
       - Last question must be a short answer question that holds voter ID
       - Get the URL from the pre-fill link such that values appended to the URL automatically fill in "voter ID"
       - This URL looks something like: https://docs.google.com/forms/d/xxx...xxx/viewform?entry.1299711861=
+      - Required survey option: 1 response per column
+      - Suggested survey options: shuffle row order, disable all confirmation page links
       - Example of a valid Google survey: 
       ![alt tag](https://raw.githubusercontent.com/jordanbonilla/OnlineVoting/master/example%20correct%20survey%20format.png)
-    
+
   
 4. A linked Google spreadsheet that gives explicit edit access to the local machine running this code
       - Select "share" on the spreadsheet and manually add your authorized console email.
