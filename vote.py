@@ -45,8 +45,12 @@ import getpass
 
 # Constant used in program.
 LARGE_POSITIVE_INT = 1e15
+# The number of digits in each voter ID
+VOTER_ID_LENGTH = 128
+# The number of digits in the survey ID
+SURVEY_ID_LENGTH = 4
 # Global list of unique numbers used in vote validation
-unique_nums = []
+all_voter_ids = []
 # Votes to ignore (invalid ID or repeated ID)
 blacklist = []
 # Global 2D array of worksheet holding all voter responses
@@ -54,17 +58,41 @@ all_data = []
 # Global string holding the survey URL
 survey_url = ''
 # Global sting holding the title of the worksheet holding raw voter data
-worksheet_title = ''
-# Global worksheet object holding raw voting data
-worksheet = None
+WORKSHEET_TITLE = ''
 # Global list of all emails invited to this survey
 all_email_addresses = []
 # Cooresponding names belonging to those emails 
-all_names = []
+all_first_names = []
+all_full_names = []
+# Unique id for all voters that identify this particular excution of this script 
+all_survey_ids = []
+# Array of votes detected in the survey results. Used to make sure no votes are deleted.
+# Encodes votes by concatenating all the data in that row into a string.
+votes_seen_so_far = []
 # Holds all information about this vote and the calculation of results
 all_output = ''
+# The account that to send all emails. Not tested with non-gmail accounts.
+HOST_GMAIL_ACCOUNT = "averyexcomm@gmail.com"
+# Param that allows APIs to read from Google docs
+SCOPES = [ "https://docs.google.com/feeds/ https://spreadsheets.google.com/feeds/"]
+# Key to Google spreadsheet that hosts the survey results. 
+# Must explicitly link to your local machine.
+LINKED_SPREADSHEET_KEY = "1Pfzdngzcxt94iFSpPxf88TyMehsUcLS-zf5TovR0Ks8"
+# Json file in current directory with oauth2 credentials. Downloaded from Google API dashboard
+SECRETS = "OnlineVoting-e363607f6925.json"
 # Holds the user-specified subject line for emails
 SUBJECT = ''
+# Minimum number of votes reach quorum - 50% of the number of undergrads living in Avery
+QUORUM =  69
+# Give voters time to reach quorum (seconds). Gets renewed if quorum is not reached.
+# Default 24 hrs
+TIME_LIMIT_QUORUM = 86400
+# The number of columns in the spreadsheet holding survey results.
+# Make global to reduce Google API calls
+NUM_COLS = -1
+# Time to wait in between vote manipulation checks (seconds).
+# Too low could cause Google API error
+CHECKS_INTERVAL = 20
 
 # Perform a normal print call but also write output to global string "all_output"
 # which will be emailed out at the end of the survey
@@ -72,225 +100,8 @@ def print_write(in_string):
 	print in_string
 	global all_output
 	all_output += in_string + '\n'
-	
-# Returns the number of responses in the survey so far
-def get_num_responses():
-	global worksheet
-	if(worksheet == None):
-		print_write("FATAL: no spreadsheet loaded")
-		sys.exit(-1)
-	first_col = worksheet.col_values(1)
-	i = 0
-	while(first_col[i] != ''):
-		i = i + 1
-	# Don't count the column header as a response
-	return i - 1
 
-# Returns the number of valid responses in the survey so far
-def get_num_valid_responses():
-	scopes = [ "https://docs.google.com/feeds/ https://spreadsheets.google.com/feeds/"]
-	credentials = ServiceAccountCredentials.from_json_keyfile_name(
-	    'OnlineVoting-e363607f6925.json', scopes=scopes)
-	gc = gspread.authorize(credentials)
-	sh = gc.open_by_key('1Pfzdngzcxt94iFSpPxf88TyMehsUcLS-zf5TovR0Ks8')
-	num_responses = get_num_responses()
-	# Grab worksheet linked to the current survey
-	worksheet = sh.worksheet(worksheet_title)
-	all_data = worksheet.get_all_values()
-	first_row = all_data[0]
-	num_cols = len(first_row)
-	encountered_IDs = {}
-	last_col = worksheet.col_values(num_cols)[1:num_responses + 1]
-	num_invalid = 0
-	for i in range(num_responses):
-		if last_col[i] == '':
-			num_invalid += 1
-		elif last_col[i] not in unique_nums:
-			num_invalid += 1
-		elif last_col[i] in encountered_IDs:
-			num_invalid += 1
-		else:
-			encountered_IDs[last_col[i]] = True
-			
-	return num_responses - num_invalid
-	
-	
-# Read the private Google spreadsheet holding info for all eligible Avery voters
-def get_all_elgible_email_address():
-	scopes = [ "https://docs.google.com/feeds/ https://spreadsheets.google.com/feeds/"]
-	credentials = ServiceAccountCredentials.from_json_keyfile_name(
-	    'OnlineVoting-e363607f6925.json', scopes=scopes)
-	gc = gspread.authorize(credentials)
-	sh = gc.open_by_key('1Kodv_Fzz9Oki6q9w14jGddP49XFWD8VnXfFlxyViMVY');
-	email_worksheet = sh.get_worksheet(0)
-	first_col = email_worksheet.col_values(1)
-	all_data = email_worksheet.get_all_values()
-	emails = []
-
-	# Skip over header entry
-	for i in range(1, len(first_col)):
-		if(first_col[i] != ''):
-			row_index = i
-			# 1st column is first name, 2nd column is nickname, 3rd column is last
-			this_name = all_data[row_index][0]
-			if(all_data[row_index][1] != ''):
-				this_name += (' "' + all_data[row_index][1] + '"')
-			this_name += (' ' + all_data[row_index][2])
-			all_names.append(this_name)
-			# The 4th column has the email data
-			all_email_addresses.append(all_data[row_index][3])
-
-# Send the following data to all eligible voters:
-# 1) list of all email addresses invited to the survey (not visible to public)
-# 2) text file of instant runoff results containing all program output
-# 3) xlsx file of the raw vote counts pulled directly from the Google spreadsheet
-def email_results(gmail_password):
-	num_averites = len(all_email_addresses)
-	if(num_averites == 0):
-		print_write('FATAL: No email addresses')
-		sys.exit(-1)
-	elif(SUBJECT == ''):
-		print_write('FATAL: No subject line')
-		sys.exit(-1)
-	elif(all_output == ''):
-		print_write('FATAL: No output')
-		sys.exit(-1)
-	elif(all_data == []):
-		print_write('FATAL: no spreadsheet data')
-		sys.exit(-1)
-	
-	# Array of all filenames to send
-	all_files = []
-	
-	print_write("Creating xlsx file with vote data...")
-	# Create an new Excel file and add a worksheet.
-	this_file_name = 'raw_votes.xlsx'
-	workbook = xlsxwriter.Workbook(this_file_name)
-	output_xlsx_file = workbook.add_worksheet()
-	# Write data with row/column notation.
-	num_rows = get_num_responses() + 1
-	num_cols = len(all_data[0])
-	for i in range(num_rows):
-		for j in range(num_cols):
-			output_xlsx_file.write(i, j, all_data[i][j])
-	# Widen columns appropriately
-	for i in range(num_cols):
-		if(i == 0):
-			output_xlsx_file.set_column(i,i, 20)
-		else:
-			output_xlsx_file.set_column(i,i, len(all_data[0][i]))
-	workbook.close()
-	print_write("SUCCESS!")
-	all_files.append(this_file_name)
-	
-	print_write("Creating xlsx file with eligible voter data...")
-	# Create an new Excel file and add a worksheet.
-	this_file_name = 'eligible_voters.xlsx'
-	workbook = xlsxwriter.Workbook(this_file_name)
-	output_xlsx_file = workbook.add_worksheet()
-	# Write data with row/column notation.
-	num_rows = len(all_names)
-	num_cols = 2
-	for i in range(num_rows):
-		output_xlsx_file.write(i, 0, all_names[i])
-		output_xlsx_file.write(i, 1, all_email_addresses[i])
-	# Widen columns appropriately
-	for i in range(num_cols):
-		output_xlsx_file.set_column(i,i, 30)
-	workbook.close()
-	print_write("SUCCESS!")
-	all_files.append(this_file_name)
-	
-	# Create text file with runoff results
-	this_file_name = "runoff_results.txt"
-	print_write("Sending results emails.")
-	file = open(this_file_name, "w")
-	file.write(all_output)
-	file.close()
-	all_files.append(this_file_name)
-	
-	sender = "averyexcomm@gmail.com"
-	server = smtplib.SMTP("smtp.gmail.com", 587)
-	server.ehlo()
-	server.starttls()
-	server.login(sender, gmail_password)
-	FROM = sender
-	
-	# Send name-tailored email to every eligible voter
-	for i in range(num_averites):
-		try:
-			TO = all_email_addresses[i]
-			first_name = all_names[i].split()[0]
-			TEXT = "Hi again " + first_name + ', ' \
-			+ "\n\nThe survey has closed and the votes have been counted." \
-			+ "\nAll email addresses that were sent a link are in eligible_voters.xlsx:" \
-			+ "\nRaw vote data is in raw_votes.xlsx:" \
-			+ "\nRunoff results are in runoff_results.txt" \
-			+ "\n\nThank you for keeping Avery great," \
-			+ "\n\n<3 your ExComm" \
-			+ "\nGithub repo: https://github.com/jordanbonilla/OnlineVoting"			
-			
-			# Prepare actual message
-			message = MIMEMultipart()
-			message['From'] = FROM
-			message['To'] = TO
-			message['Subject'] = "*RESULTS* " + SUBJECT
-			message.attach(MIMEText(TEXT))
-
-			# Attach all files
-			for j in range(len(all_files)):
-				file_name = all_files[j]
-				with open(file_name, "rb") as fil:
-					message.attach(MIMEApplication(
-						fil.read(),
-						Content_Disposition='attachment; filename="%s"' % basename(file_name),
-						Name=basename(file_name)
-						))
-			# Send
-			server.sendmail(FROM, TO, message.as_string())
-		except:
-			print_write("Error: unable to send email to " + all_email_addresses[i])
-			server.quit()
-			e = sys.exc_info()[0]
-			print e
-			sys.exit(-1)
-		# Don't risk sending too many emails in too short a time span
-		time.sleep(2)
-
-	print_write("Success. Total number of emails sent: " + str(num_averites) + " / " + str(num_averites))
-	delete_sent_folder(sender, gmail_password)
-	server.quit()
-
-	
-	
-# If a voter ID is invalid, overwrite it with an error message and blacklist the vote
-def identify_invalid_votes(num_cols, num_responses):
-	global worksheet
-	if(worksheet == None):
-		print_write("FATAL: spreadsheet not read")
-		sys.exit(-1)
-	encountered_IDs = {}
-	last_col = worksheet.col_values(num_cols)[1:num_responses + 1]
-	for i in range(num_responses):
-		if last_col[i] == '':
-			blacklist.append(i)
-			# +2 offset since the API calls are 1-indexed and we must account for header data
-			worksheet.update_cell(i + 2, num_cols, "INVALID VOTE! EMPTY ID: " + last_col[i])
-			# Make sure Google APIs calls aren't too close together - could cause error
-			time.sleep(5)
-		elif last_col[i] not in unique_nums:
-			blacklist.append(i)
-			worksheet.update_cell(i + 2, num_cols, "INVALID VOTE! UNAUTHORIZED ID: " + last_col[i])
-			time.sleep(5)
-		elif last_col[i] in encountered_IDs:
-			blacklist.append(i)
-			worksheet.update_cell(i + 2, num_cols, "INVALID VOTE! REPEATED ID: " + last_col[i])
-			time.sleep(5)
-		else:
-			encountered_IDs[last_col[i]] = True
-	#print num_responses, num_cols, last_col
-	
-# Generate time-seeded random number with n digits. Used to generate voter IDs.
+# Generate time-seeded random number with n digits. Used to generate voter IDs and pins
 def random_with_N_digits(n):
 	# Time-seed random values
 	random.seed
@@ -298,69 +109,245 @@ def random_with_N_digits(n):
 	range_end = (10**n)-1
 	return random.randint(range_start, range_end)
 
-# Send links to the survey, along with the unique voter IDs (embedded in URL)
-def email_the_links(gmail_password):
-	print_write("Sending emails to all eligible voters...")
-	# Load all emails addresses in global variable "all_email_addresses"
-	get_all_elgible_email_address()
-	num_averites = len(all_email_addresses)
-	if(num_averites == 0):
-		print_write('FATAL: No email addresses')
+# Use credentials to return an authenticated worksheet object with voter data
+def renewed_worksheet():
+	if(WORKSHEET_TITLE == ''):
+		write_print("FATAL: Worksheet title does not exit")
 		sys.exit(-1)
-	elif(SUBJECT == ''):
-		print_write('FATAL: No subject line')
+	times_attempted = 0
+	max_num_attempts = 10
+	while(times_attempted < max_num_attempts):
+		try:
+			credentials = ServiceAccountCredentials.from_json_keyfile_name(SECRETS, scopes=SCOPES)
+			gc = gspread.authorize(credentials)
+			sh = gc.open_by_key(LINKED_SPREADSHEET_KEY)
+			authenticated_worksheet = sh.worksheet(WORKSHEET_TITLE)
+			time.sleep(5) # Ensure we don't call Google APIs too rapidly
+			break
+		except: #Maybe we are using APIs too much. Try again in 1 minute
+			print "Unable to fetch worksheet. Maybe we are using APIs too much. Try again in 1 minute"
+			time.sleep(60)
+			times_attempted = times_attempted + 1
+
+	return authenticated_worksheet
+
+# Try to read a column from a recently authenticated worksheet with voter data
+def grab_col_safe(authenticated_worksheet, col_num):
+	if(WORKSHEET_TITLE == ''):
+		write_print("FATAL: Worksheet title does not exit")
+		sys.exit(-1)
+	times_attempted = 0
+	max_num_attempts = 10
+	while(times_attempted < max_num_attempts):
+		try:
+			requested_col = authenticated_worksheet.col_values(col_num)
+			time.sleep(5) # Ensure we don't call Google APIs too rapidly
+			break
+		except: #Maybe we are using APIs too much. Try again in 1 minute
+			print "Unable to grab column. Maybe we are using APIs too much. Try again in 1 minute"
+			time.sleep(60)
+			worksheet = renewed_worksheet
+			times_attempted = times_attempted + 1
+
+	return requested_col
+
+# Try to read all data from a recently authenticated worksheet with voter data
+def grab_all_data_safe(authenticated_worksheet):
+	if(WORKSHEET_TITLE == ''):
+		write_print("FATAL: Worksheet title does not exit")
+		sys.exit(-1)
+	times_attempted = 0
+	max_num_attempts = 10
+	while(times_attempted < max_num_attempts):
+		try:
+			requested_data = authenticated_worksheet.get_all_values()
+			break
+		except: #Maybe we are using APIs too much. Try again in 1 minute
+			print "Unable to grab all data. Maybe we are using APIs too much. Try again in 1 minute"
+			time.sleep(60)
+			worksheet = renewed_worksheet
+			times_attempted = times_attempted + 1
+
+	return requested_data
+
+# Try to update an entry in a worksheet hosting the voter data
+def update_worksheet_cell_safe(worksheet, row, col, new_val):
+	if(WORKSHEET_TITLE == ''):
+		write_print("FATAL: Worksheet title does not exit")
+		sys.exit(-1)
+	times_attempted = 0
+	max_num_attempts = 10
+	while(times_attempted < max_num_attempts):
+		try:
+			worksheet.update_cell(row, col, new_val)
+			time.sleep(5) # Ensure we don't call Google APIs too rapidly
+			break
+		except: #Maybe we are using APIs too much. Try again in 1 minute
+			print "Unable to update cell. Maybe we are using APIs too much. Try again in 1 minute"
+			time.sleep(60)
+			worksheet = renewed_worksheet
+			times_attempted = times_attempted + 1
+		
+	
+# Ascertain the number of columns in the survey results spreadsheet.
+# We load this value in global memory to mitigate API calls later on.
+def get_num_columns():
+	global NUM_COLS
+	worksheet = renewed_worksheet()
+	all_data = grab_all_data_safe(worksheet)
+	first_row = all_data[0]
+	NUM_COLS = len(first_row)
+	
+# Returns the number of responses in the survey so far
+def get_num_responses():
+	if(WORKSHEET_TITLE == ''):
+		print_write("FATAL: worksheet title not specified")
 		sys.exit(-1)
 		
-	sender = "averyexcomm@gmail.com"
-	server = smtplib.SMTP("smtp.gmail.com", 587)
-	server.ehlo()
-	server.starttls()
+	worksheet = renewed_worksheet()
+	first_col = grab_col_safe(worksheet, 1)
+	i = 0
+	while(first_col[i] != ''):
+		i = i + 1
+	# Don't count the column header as a response
+	return i - 1
 
-	server.login(sender, gmail_password)
-	FROM = sender
+# get number of responses from a voting data worksheet directly. 
+# Must make sure the worksheet was recently renewed or this won't work.
+# Prevents an extra API call
+def get_num_responses_on_recently_renewed_worksheet(renewed_worksheet):
+	if(WORKSHEET_TITLE == ''):
+		print_write("FATAL: worksheet title not specified")
+		sys.exit(-1)
+	try:
+		first_col = grab_col_safe(renewed_worksheet, 1)
+		i = 0
+		while(first_col[i] != ''):
+			i = i + 1
+		# Don't count the column header as a response
+		return i - 1
+	except:
+		# Perhaps it was was not recently renewed so call the version of
+		# this function that explicitly renews a worksheet
+		return get_num_responses
 
-	unique_urls = [None] * num_averites
-	for i in range(num_averites):
-		unique_nums.append(str(random_with_N_digits(128)))
-		unique_urls[i] = survey_url + unique_nums[i]
 
-	BODY = \
-			textwrap.fill("This is a unique link assigned to you. For this reason, " \
-			+ "do not share this link or forward this email to anyone else. If you are not" \
-			+ " a current Averite or know of a current Averite who did not receive a voting " \
-			+ "link, please contact a member of ExComm so we can correct the eligible voter" \
-			+ " mailing list. Lastly, please save this email message so that you have your" \
-			+ " unique link on file should a vote's legitimacy fall into question.") \
+# Returns the number of valid responses in the survey so far
+def get_num_valid_responses():
+	if(WORKSHEET_TITLE == ''):
+		print_write("FATAL: worksheet title not specified")
+		sys.exit(-1)
+	elif(NUM_COLS == -1):
+		print_write("FATAL: number of spreadsheet columns not specified")
+		sys.exit(-1)
+	# Grab worksheet linked to the current survey
+	worksheet = renewed_worksheet()
+	num_responses = get_num_responses_on_recently_renewed_worksheet(worksheet)
+
+	encountered_IDs = {}
+	last_col = grab_col_safe(worksheet, NUM_COLS)[1:num_responses + 1]
+	num_invalid = 0
+	for i in range(num_responses):
+		if last_col[i] == '':
+			num_invalid += 1
+		elif last_col[i] not in all_voter_ids:
+			num_invalid += 1
+		elif last_col[i] in encountered_IDs:
+			num_invalid += 1
+		else:
+			encountered_IDs[last_col[i]] = True
 			
-	for i in range(num_averites):
-		try:
-			first_name = all_names[i].split()[0]
-			TO = all_email_addresses[i]
-			TEXT = "Hi " + first_name + ', ' \
-			+ "\n\nHere is your link to vote: \n" + unique_urls[i] \
-			+ "\n\n" + BODY \
-			+ "\n\nThank you for keeping Avery great," \
-			+ "\n\n<3 your ExComm"
-			# Prepare actual message
-			message = """\From: %s\nTo: %s\nSubject: %s\n\n%s
-			""" % (FROM, TO, SUBJECT, TEXT)
-			server.sendmail(FROM, TO, message)
-		except:
-			print_write("Error: unable to send email to " + all_email_addresses[i])
-			server.quit()
-			e = sys.exc_info()[0]
-			print e
-			sys.exit(-1)
-		# Don't risk sending too many emails in too short a time span
-		time.sleep(2)
+	return num_responses - num_invalid
 
-	print_write("All unique links sent. Total number of emails sent: " + str(num_averites) + " / " + str(num_averites))
-	
-	delete_sent_folder(sender, gmail_password)
-	server.quit()
+# Called if an email could not be sent. Re-try the email 
+def email_recovery(server, FROM, TO, message, recipient):
+	# Perhaps it was a network error? Wait and try again
+	times_attempted = 1
+	max_attempts = 10
+	while(times_attempted < max_attempts):
+		print "Previous email failed. Retying email to " + recipient
+		try:
+			time.sleep(30)
+			server.sendmail(FROM, TO, message)
+			break
+		except:
+			times_attempted = times_attempted + 1
+	if(times_attempted == max_attempts):
+			print_write("FATAL: unable to send email to " + recipient)
+			server.quit()
+			print sys.exc_info()[0]
+			sys.exit(-1)
+			
+# If a voter ID is invalid, overwrite it with an error message and blacklist the vote
+def identify_invalid_votes(num_responses):
+	global all_data
+	if(WORKSHEET_TITLE == ''):
+		print_write("FATAL: worksheet title not specified")
+		sys.exit(-1)
+	elif(NUM_COLS == -1):
+		print_write("FATAL: number of spreadsheet columns not specified")
+		sys.exit(-1)
+		
+	# Grab worksheet linked to the current survey
+	worksheet = renewed_worksheet()
+	encountered_IDs = {}
+	last_col = grab_col_safe(worksheet, NUM_COLS)[1:num_responses + 1]
+	for i in range(num_responses):
+		if last_col[i] == '':
+			blacklist.append(i)
+			# +2 offset since the API calls are 1-indexed and we must account for header data
+			update_worksheet_cell_safe(worksheet, i + 2, NUM_COLS, "INVALID VOTE! EMPTY ID: " + last_col[i])
+			# Update local data to have this markup
+			all_data[i+1][NUM_COLS - 1] = "INVALID VOTE! EMPTY ID: " + last_col[i]
+		elif last_col[i] not in all_voter_ids:
+			blacklist.append(i)
+			update_worksheet_cell_safe(worksheet, i + 2, NUM_COLS, "INVALID VOTE! EMPTY ID: " + last_col[i])
+			all_data[i+1][NUM_COLS - 1] = "INVALID VOTE! UNAUTHORIZED ID: " + last_col[i]
+		elif last_col[i] in encountered_IDs:
+			blacklist.append(i)
+			update_worksheet_cell_safe(worksheet, i + 2, NUM_COLS, "INVALID VOTE! EMPTY ID: " + last_col[i])
+			all_data[i+1][NUM_COLS - 1] = "INVALID VOTE! REPEATED ID: " + last_col[i]
+		else:
+			encountered_IDs[last_col[i]] = True
+
+# Read the private Google spreadsheet holding info for all eligible Avery voters
+def get_all_elgible_email_address():
+	global all_email_addresses
+	global all_first_names
+	all_email_addresses.append("jordan@caltech.edu")
+	all_email_addresses.append("sunbonilla@yahoo.com")
+	all_first_names.append("Jordan")
+	all_first_names.append("sun")
+	return
+
+	credentials = ServiceAccountCredentials.from_json_keyfile_name(SECRETS, scopes=SCOPES)
+	gc = gspread.authorize(credentials)
+	sh = gc.open_by_key('1Kodv_Fzz9Oki6q9w14jGddP49XFWD8VnXfFlxyViMVY');
+	email_worksheet = sh.get_worksheet(0)
+	first_col = grab_col_safe(email_worksheet, 1)
+	all_data = grab_all_data_safe(email_worksheet)
+	emails = []
+
+	# Skip over header entry
+	for i in range(1, len(first_col)):
+		if(first_col[i] != ''):
+			row_index = i
+			# 1st column is first name, 2nd column is nickname, 3rd column is last
+			full_name = all_data[row_index][0]
+			if(all_data[row_index][1] != ''):
+				first_name = all_data[row_index][1]
+				full_name += ' "' + all_data[row_index][1] + '"'
+			else:
+				first_name = all_data[row_index][0]
+			full_name += ' ' + all_data[row_index][2]
+			
+			all_first_names.append(first_name)
+			all_full_names.append(full_name)
+			# The 4th column has the email data
+			all_email_addresses.append(all_data[row_index][3])
 
 # delete sent folder to ensure voter anonymity. This prevents association of
-# voter ID with email address.
+# voter ID with email address and prevents pins from being recovered
 def delete_sent_folder(sender, password):
 	m = imaplib.IMAP4_SSL("imap.gmail.com")  # server to connect to
 	m.login(sender, password)
@@ -380,26 +367,219 @@ def delete_sent_folder(sender, password):
 	m.close()
 	m.logout()
 	print_write("Sent folder successfully deleted.\n")	
+	
+# Send the following data to all eligible voters:
+# 1) list of all email addresses invited to the survey (not visible to public)
+# 2) text file of instant runoff results containing all program output
+# 3) xlsx file of the raw vote counts pulled directly from the Google spreadsheet
+def email_results(gmail_password):
+	num_averites = len(all_email_addresses)
+	if(num_averites == 0):
+		print_write('FATAL: No email addresses')
+		sys.exit(-1)
+	elif(SUBJECT == ''):
+		print_write('FATAL: No subject line')
+		sys.exit(-1)
+	elif(all_output == ''):
+		print_write('FATAL: No output')
+		sys.exit(-1)
+	elif(all_data == []):
+		print_write('FATAL: no spreadsheet data')
+		sys.exit(-1)
+	elif(NUM_COLS == -1):
+		print_write("FATAL: number of spreadsheet columns not specified")
+		sys.exit(-1)
+	elif(all_survey_ids == []):
+		print_write("FATAL: Survey IDs not generated")
+		sys.exit(-1)
+		
+	# Array of all filenames to send
+	all_files = []
+	
+	print_write("Creating xlsx file with vote data...")
+	# Create an new Excel file and add a worksheet.
+	this_file_name = 'raw_votes.xlsx'
+	workbook = xlsxwriter.Workbook(this_file_name)
+	output_xlsx_file = workbook.add_worksheet()
+	# Write data with row/column notation.
+	num_rows = get_num_responses() + 1
+	for i in range(num_rows):
+		for j in range(NUM_COLS):
+			output_xlsx_file.write(i, j, all_data[i][j])
+	# Widen columns appropriately
+	for i in range(NUM_COLS):
+		if(i == 0):
+			output_xlsx_file.set_column(i,i, 20)
+		else:
+			output_xlsx_file.set_column(i,i, len(all_data[0][i]))
+	workbook.close()
+	print_write("SUCCESS!")
+	all_files.append(this_file_name)
+	
+	print_write("Creating xlsx file with eligible voter data...")
+	# Create an new Excel file and add a worksheet.
+	this_file_name = 'eligible_voters.xlsx'
+	workbook = xlsxwriter.Workbook(this_file_name)
+	output_xlsx_file = workbook.add_worksheet()
+	# Write data with row/column notation.
+	num_rows = len(all_first_names)
+	cols = 2
+	for i in range(num_rows):
+		output_xlsx_file.write(i, 0, all_full_names[i])
+		output_xlsx_file.write(i, 1, all_email_addresses[i])
+	# Widen columns appropriately
+	for i in range(cols):
+		output_xlsx_file.set_column(i,i, 30)
+	workbook.close()
+	print_write("SUCCESS!")
+	all_files.append(this_file_name)
+	
+	# Create text file with runoff results
+	this_file_name = "runoff_results.txt"
+	print_write("Sending results emails.")
+	file = open(this_file_name, "w")
+	file.write(all_output)
+	file.close()
+	all_files.append(this_file_name)
+	
+	sender = HOST_GMAIL_ACCOUNT
+	server = smtplib.SMTP("smtp.gmail.com", 587)
+	server.ehlo()
+	server.starttls()
+	server.login(sender, gmail_password)
+	FROM = sender
+	
+	# Send name-tailored email to every eligible voter with their custom pin
+	for i in range(num_averites):
+		try:
+			TO = all_email_addresses[i]
+			TEXT = "Hi again " + all_first_names[i] + ', ' \
+			+ "\n\nThe survey has closed and the votes have been counted." \
+			+ "\nAll email addresses that were sent a link are in eligible_voters.xlsx" \
+			+ "\nRaw vote data is in raw_votes.xlsx" \
+			+ "\nRunoff results are in runoff_results.txt" \
+			+ "\n\nThank you for keeping Avery great," \
+			+ "\n\n<3 your ExComm" \
+			+ "\nSurvey ID (should match the first email): " + str(all_survey_ids[i]) \
+			+ "\nGithub repo: https://github.com/jordanbonilla/OnlineVoting"
+
+			# Prepare actual message
+			message = MIMEMultipart()
+			message['From'] = FROM
+			message['To'] = TO
+			message['Subject'] = "*RESULTS* " + SUBJECT
+			message.attach(MIMEText(TEXT))
+
+			# Attach all files
+			for j in range(len(all_files)):
+				file_name = all_files[j]
+				with open(file_name, "rb") as fil:
+					message.attach(MIMEApplication(
+						fil.read(),
+						Content_Disposition='attachment; filename="%s"' % basename(file_name),
+						Name=basename(file_name)
+						))
+			# Send
+			server.sendmail(FROM, TO, message.as_string())
+		except:
+			email_recovery(server, FROM, TO, message.as_string(), TO)
+		# Don't risk sending too many emails in too short a time span
+		time.sleep(2)
+		# Write progress to local terminal
+		sys.stdout.write('\r')
+		sys.stdout.write("[%-20s] %d%%" % ('='*(20 * (i+1)/num_averites), 100 * (i+1)/num_averites))
+		sys.stdout.flush()
+	
+	print_write("\nSuccess. Total number of emails sent: " + str(num_averites) + " / " + str(num_averites))
+	delete_sent_folder(sender, gmail_password)
+	server.quit()
+
+	from time import sleep
+import sys
+	
+# Send links to the survey, along with the unique voter IDs (embedded in URL), and survey pin
+def email_the_links(gmail_password):
+	print_write("Sending emails to all eligible voters...")
+	if(all_email_addresses == []):
+		write_print("FATAL: no email addresses loaded")
+		sys.exit(-1)
+	num_averites = len(all_email_addresses)
+	if(num_averites == 0):
+		print_write('FATAL: No email addresses')
+		sys.exit(-1)
+	elif(SUBJECT == ''):
+		print_write('FATAL: No subject line')
+		sys.exit(-1)
+		
+	sender = HOST_GMAIL_ACCOUNT
+	server = smtplib.SMTP("smtp.gmail.com", 587)
+	server.ehlo()
+	server.starttls()
+
+	server.login(sender, gmail_password)
+	FROM = sender
+
+	global all_voter_ids
+	global all_survey_ids
+	unique_urls = []
+	# Generate voter IDs and pins
+	used_voter_ids = {}
+	for i in range(num_averites):
+		this_voter_id = random_with_N_digits(VOTER_ID_LENGTH)
+		while(this_voter_id in used_voter_ids):
+			this_voter_id = random_with_N_digits(VOTER_ID_LENGTH)
+		used_voter_ids[this_voter_id] = True
+		all_voter_ids.append(str(this_voter_id))
+		all_survey_ids.append(str(random_with_N_digits(SURVEY_ID_LENGTH)))
+		unique_urls.append(survey_url + all_voter_ids[i])
+		
+	BODY = \
+			textwrap.fill("This is a unique link assigned to you. For this reason, " \
+			+ "do not share this link or forward this email to anyone else. If you are not" \
+			+ " a current Averite or know of a current Averite who did not receive a voting " \
+			+ "link, please contact a member of ExComm so we can correct the eligible voter" \
+			+ " mailing list. Lastly, please save this email message so that you have your" \
+			+ " unique pin and url on file should a vote's legitimacy fall into question.") \
+			
+	for i in range(num_averites):
+		try:
+			TO = all_email_addresses[i]
+			TEXT = "Hi " + all_first_names[i] + ', ' \
+			+ "\n\nHere is your link to vote: \n" + unique_urls[i] \
+			+ "\n\n" + BODY \
+			+ "\n\nThank you for keeping Avery great," \
+			+ "\n\n<3 your ExComm" \
+			+ "\nSurvey ID: " + str(all_survey_ids[i]) \
+			+ "\nGithub repo: https://github.com/jordanbonilla/OnlineVoting"
+			# Prepare actual message
+			message = """\From: %s\nTo: %s\nSubject: %s\n\n%s
+			""" % (FROM, TO, SUBJECT, TEXT)
+			server.sendmail(FROM, TO, message)
+		except:
+			email_recovery(server, FROM, TO, message, TO)
+		# Don't risk sending too many emails in too short a time span
+		time.sleep(2)
+		# Write progress to local terminal
+		sys.stdout.write('\r')
+		sys.stdout.write("[%-20s] %d%%" % ('='*(20 * (i+1)/num_averites), 100 * (i+1)/num_averites))
+		sys.stdout.flush()
+		
+	print_write("\nAll unique links sent. Total number of emails sent: " + str(num_averites) + " / " + str(num_averites))
+	
+	delete_sent_folder(sender, gmail_password)
+	server.quit()
 
 # Read in results from spreadsheet holding voter data and calculate winners
 def get_results():
 	global all_data
-	global worksheet
-	global worksheet_title
-	if(worksheet_title == ''):
+	if(WORKSHEET_TITLE == ''):
 		print_write("FATAL: no worksheet title specified")
 		sys.exit(-1)
 		
-	scopes = [ "https://docs.google.com/feeds/ https://spreadsheets.google.com/feeds/"]
-	credentials = ServiceAccountCredentials.from_json_keyfile_name(
-	    'OnlineVoting-e363607f6925.json', scopes=scopes)
-
-	gc = gspread.authorize(credentials)
-	sh = gc.open_by_key('1Pfzdngzcxt94iFSpPxf88TyMehsUcLS-zf5TovR0Ks8')
-	# Grab worksheet linked to the current survey
-	worksheet = sh.worksheet(worksheet_title)
-
-	all_data = worksheet.get_all_values()
+	worksheet = renewed_worksheet()
+	num_responses  = get_num_responses_on_recently_renewed_worksheet(worksheet)
+	
+	all_data = grab_all_data_safe(worksheet)
 	position_delimiters = []
 	position_encountered = {}
 	first_row = all_data[0]
@@ -421,12 +601,9 @@ def get_results():
 		else:
 			candidates_adjoined[-1] += ('\t' + this_candidate)
 	
-	# Print survey statistics
-	num_cols = len(first_row)
-	num_responses  = get_num_responses()
 	print_write("Number of votes cast in this survey: " + str(num_responses))
 	# Identify votes that are are invalid
-	identify_invalid_votes(num_cols, num_responses)
+	identify_invalid_votes(num_responses)
 
 	num_invalid = len(blacklist)
 	print_write("Number of invalid votes: " + str(num_invalid))
@@ -560,39 +737,110 @@ num_positions, num_responses):
 	# There was no tie. Exactly one candidate to eliminate
 	else:	
 		remaining_candidates.remove(min_indices[0])
+
+# Comapre a list of verified votes with the current set of votes to make sure the current
+# set of votes is a superset of the verified set of votes
+def ensure_no_votes_manipulated():
+	num_averites = len(all_email_addresses)
+	if(num_averites == 0):
+		print_write('FATAL: No email addresses')
+		sys.exit(-1)
+	elif(SUBJECT == ''):
+		print_write('FATAL: No subject line')
+		sys.exit(-1)
+	elif(WORKSHEET_TITLE == ''):
+		print_write("FATAL: worksheet title not specified")
+		sys.exit(-1)
+	elif(all_email_addresses == []):
+		print_write("FATAL: no emails specified")
+		sys.exit(-1)
+	elif(NUM_COLS == -1):
+		print_write("FATAL: number of spreadsheet columns not specified")
+		sys.exit(-1)
 		
-# Entry point
-if __name__ == "__main__":
-	# URL retrived from manually-created Google survey 
-	survey_url = raw_input('Enter survey URL:') #https://docs.google.com/forms/d/1Ql535WTs_w4UMFfdrwqx1-dxxPhSXO22jd80Hg6VpzQ/viewform?entry.1388757669='
+	worksheet = renewed_worksheet()
+	num_responses = get_num_responses_on_recently_renewed_worksheet(worksheet)
+	latest_data = grab_all_data_safe(worksheet)
+	latest_votes = {}
+	# Encode vote info into a string
+	for i in range(num_responses):
+		relevant_votes = latest_data[i + 1] # +1 to account for header row
+		encoded_vote = ''
+		for j in range(len(relevant_votes)):
+			encoded_vote += str(relevant_votes[j])
+		latest_votes[encoded_vote] = True
+		
+	# Array of all encoded votes seen so far
+	global votes_seen_so_far
+	num_votes_seen_so_far = len(votes_seen_so_far)
+	# Check that all existing votes exist in the latest batch of pulled votes
+	for i in range(num_votes_seen_so_far):
+		if votes_seen_so_far[i] not in latest_votes:
+			email_tamper_notification()
+	# Add any new votes to existing votes
+	for encoded_vote in latest_votes.keys():
+		if encoded_vote not in votes_seen_so_far:
+			votes_seen_so_far.append(encoded_vote)
+					
+# Vote tamper detected. Email all eligible voters and exit.
+def email_tamper_notification():
+	sender = HOST_GMAIL_ACCOUNT
+	server = smtplib.SMTP("smtp.gmail.com", 587)
+	server.ehlo()
+	server.starttls()
+	server.login(sender, gmail_password)
+	FROM = sender
+	
+	num_averites = len(all_first_names)
+	for i in range(num_averites):
+		try:
+			TO = all_email_addresses[i]
+			TEXT = "Hi " + all_first_names[i] + ', ' \
+			+ "\n\nThe vote has been terminated due to detection of vote manipulation\n" \
+			+ "\n\nSurvey ID (should match the first email): " + str(all_survey_ids[i]) \
+			+ "\nGithub repo: https://github.com/jordanbonilla/OnlineVoting"
+			# Prepare actual message
+			message = """\From: %s\nTo: %s\nSubject: %s\n\n%s
+			""" % (FROM, TO, "*CANCELED* " + SUBJECT, TEXT)
+			server.sendmail(FROM, TO, message)
+		except:
+			email_recovery(server, FROM, TO, message, TO)
+		# Don't risk sending too many emails in too short a time span
+		time.sleep(2)
+	print_write("Vote terminated due to a vote being manipulated")
+	server.quit()
+	sys.exit(-1)
+		
+# Verify survey URL meets specifications
+def verify_survey(survey_url):
 	if(survey_url[-1] != '='):
 		print_write('FATAL: Invalid spreadsheet URL, did you remember to change the URL to pre-fill ID?')
 		sys.exit(-1)
 	elif('https://docs.google.com/forms' not in survey_url):
 		print_write("FATAL: Invalid spreadsheet URL. Please check for typos.")
 		sys.exit(-1)
-	# Title of worksheet. Established when creating the worksheet via Google form creation
-	worksheet_title = raw_input('Enter worksheet title:') #"Voting Results"
+		
+# Make sure that the worksheet exists on the spreadsheet specified by LINKED_SPREADSHEET_KEY
+def verify_worksheet_title():
+	if(WORKSHEET_TITLE == ''):
+		write_print("FATAL: Global WORKSHEET_TITLE not populated")
+		sys.exit(-1)
 	try:
-		scopes = [ "https://docs.google.com/feeds/ https://spreadsheets.google.com/feeds/"]
-		credentials = ServiceAccountCredentials.from_json_keyfile_name(
-			'OnlineVoting-e363607f6925.json', scopes=scopes)
-		gc = gspread.authorize(credentials)
-		sh = gc.open_by_key('1Pfzdngzcxt94iFSpPxf88TyMehsUcLS-zf5TovR0Ks8')
-		worksheet = sh.worksheet(worksheet_title)
-		first_col = worksheet.col_values(1)
+		worksheet = renewed_worksheet()
+		first_col = grab_col_safe(worksheet, 1)
 		# Read through the first column for any existing data. Skip header info
 		for i in range(1, len(first_col)):	
 			if(first_col[i] != ''):
 				print_write("FATAL: specified worksheet is not blank. Do NOT reuse worksheets")
 				sys.exit(-1)
 	except:
-		print_write("Invalid worksheet name. Exiting")
+		print_write("Worksheet does not exist in spreadsheet. Exiting")
 		sys.exit(-1)
-	# Password known by all members of the ExComm
-	gmail_password = getpass.getpass('[ECHO DISABLED] Enter averyexcomm password:') #"makeaverygreatagain"
+
+# Make sure that the gmail password associated with the host is correct
+def verify_gmail_pass(gmail_password):
 	try:
-		sender = "averyexcomm@gmail.com"
+		sender = HOST_GMAIL_ACCOUNT
 		server = smtplib.SMTP("smtp.gmail.com", 587)
 		server.ehlo()
 		server.starttls()
@@ -601,19 +849,41 @@ if __name__ == "__main__":
 	except:
 		write_print("Wrong gmail password name. Exiting")
 		sys.exit(-1)
+		
+# Entry point
+if __name__ == "__main__":
+	# URL retrived from manually-created Google survey 
+	survey_url = raw_input('Enter survey URL:') 
+	verify_survey(survey_url)
+	# Title of worksheet holding voter data.
+	# Established when creating the worksheet via Google form creation.
+	WORKSHEET_TITLE = raw_input('Enter worksheet title:') 
+	verify_worksheet_title()
+	# Password known by all members of the ExComm
+	gmail_password = getpass.getpass('[ECHO DISABLED] Enter averyexcomm password:')
+	verify_gmail_pass(gmail_password)
 	# Subject as it will appear in emails
-	SUBJECT = raw_input('Enter email subject:') #"Please Vote for Your Favorite Color and Animal"
-
-	# 50% of the number of undergrads living in Avery
-	QUORUM =  69
+	SUBJECT = raw_input('Enter email subject:')
+	
+	# Load all email addresses to be used in this survey into global variable "all_email_addresses"
+	get_all_elgible_email_address()
+	# Load the number of columns in the spreadsheet into global variable to minimize API calls
+	get_num_columns()
 	# All input params are good. Email links to the survey
 	email_the_links(gmail_password)
 	
-	# Give voters time to reach quorum in batches of 24 hours
-	SECONDS_PER_DAY = 86400
+	# Time-seed random values
+	random.seed
 	while(1):
 		print_write('Waiting 24 hours for quorum to be reached...')
-		time.sleep(SECONDS_PER_DAY)
+		elapsed_seconds = 0.0
+		while(elapsed_seconds < TIME_LIMIT_QUORUM):
+			start_time = time.time()
+			random_time_slice = CHECKS_INTERVAL + random.randint(1, 5) # Add variability for security
+			time.sleep(random_time_slice)
+			ensure_no_votes_manipulated()
+			elapsed_time = time.time() - start_time
+			elapsed_seconds += elapsed_time
 		num_valid_votes = get_num_valid_responses()
 		print_write("Number of valid votes so far: " + str(num_valid_votes) + ", Quorum: " + str(QUORUM))
 		if(num_valid_votes >= QUORUM):
