@@ -12,7 +12,7 @@ This framework interfaces Google surveys with Python for a clean front end and b
 
 2. Python script generates unique links to the survey and emails out links. One link per email addresses. These links can be hardcoded or read from a Google doc (default)
 
-3. Results automatically go into the linked Google Spreadsheet
+3. Results automatically go into the linked Google Spreadsheet. As the script waits for the time limit to be reached, it actively checks the spreadsheet for tampering. 
 
 4. When the voting period has ended, the Python script reads in the results from this spreadsheet, parses it, and calculates the winners based on instant runoff. The results are automatically emailed out.
 
