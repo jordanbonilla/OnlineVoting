@@ -71,3 +71,8 @@ This framework interfaces Google surveys with Python for a clean front end and b
       - Trying to re-use worksheets will result in failure
       - This step must be completed for every new survey
       ![alt tag](https://raw.githubusercontent.com/jordanbonilla/OnlineVoting/master/worksheet%20guide.png)
+
+# Notes:
+When choosing a local machine to run this script on, keep in mind that the script's execution can not be interrupted or the vote will end. Additionally, the script needs to internet access throughout the duration of its execution time so that it can actively check for vote manipulation. 
+
+The script should should be portable and has been tested on Windows 10 and Ubuntu 14
