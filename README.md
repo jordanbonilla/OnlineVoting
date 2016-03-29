@@ -69,5 +69,5 @@ This framework interfaces Google surveys with Python for a clean front end and b
 5. A new, blank worksheet in your linked spreadsheet (step 3) with a unique name. 
       - This worksheet must be created manually and specified as the data destination when creating the survey (step 4)
       - Trying to re-use worksheets will result in failure
-      - Google does not allow a complete wipe of existing worksheets
       - This step must be completed for every new survey
+      ![alt tag](https://raw.githubusercontent.com/jordanbonilla/OnlineVoting/master/worksheet%20guide.png)
