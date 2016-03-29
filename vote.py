@@ -42,6 +42,10 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 # Allows commandline text to be entered without echoing
 import getpass
+# Allows pinging to check internet connection
+import subprocess
+# Allows us to check what OS this script is running on
+import os
 
 # Constant used in program.
 LARGE_POSITIVE_INT = 1e15
@@ -92,15 +96,37 @@ TIME_LIMIT_QUORUM = 86400
 NUM_COLS = -1
 # Time to wait in between vote manipulation checks (seconds).
 # Too low could cause Google API error
-CHECKS_INTERVAL = 20
+CHECKS_INTERVAL = 5
 
+# Ensure the local machine is connected to the internet. Exit if no internet.
+def verify_internet_access():
+	success = True
+	host = "8.8.8.8" # Google
+	#Windows OS
+	if(os.name == "nt"):
+		output = subprocess.Popen(["ping.exe",host],stdout = subprocess.PIPE).communicate()[0]
+		if("0% loss" in output):
+			print "--- Internet status: OK ---\n"
+		else:
+			success = False
+	# UNIX
+	else:
+		output = subprocess.Popen(['ping', '-c 1 -W 1 ', host], stdout=subprocess.PIPE).communicate()[0]
+		if("0% packet loss" in output):
+			print "--- Internet status: OK ---\n"
+		else:
+			success = False
+	if(success == False):
+		print output
+		sys.exit(-1)
+		
 # Perform a normal print call but also write output to global string "all_output"
 # which will be emailed out at the end of the survey
 def print_write(in_string):
 	print in_string
 	global all_output
 	all_output += in_string + '\n'
-
+		
 # Generate time-seeded random number with n digits. Used to generate voter IDs and pins
 def random_with_N_digits(n):
 	# Time-seed random values
@@ -115,60 +141,93 @@ def renewed_worksheet():
 		write_print("FATAL: Worksheet title does not exit")
 		sys.exit(-1)
 	times_attempted = 0
-	max_num_attempts = 10
+	max_num_attempts = 5
 	while(times_attempted < max_num_attempts):
 		try:
 			credentials = ServiceAccountCredentials.from_json_keyfile_name(SECRETS, scopes=SCOPES)
 			gc = gspread.authorize(credentials)
 			sh = gc.open_by_key(LINKED_SPREADSHEET_KEY)
 			authenticated_worksheet = sh.worksheet(WORKSHEET_TITLE)
-			time.sleep(5) # Ensure we don't call Google APIs too rapidly
+			time.sleep(2) # Ensure we don't call Google APIs too rapidly
 			break
-		except: #Maybe we are using APIs too much. Try again in 1 minute
-			print "Unable to fetch worksheet. Maybe we are using APIs too much. Try again in 1 minute"
-			time.sleep(60)
+		except: #Maybe we are using APIs too much. Try again after waiting
+			print "Unable to fetch worksheet. Trying again..."
+			verify_internet_access()
+			time.sleep(10)
 			times_attempted = times_attempted + 1
+	if(times_attempted == max_num_attempts):
+		print "Unable to recover"
+	else:
+		return authenticated_worksheet
 
-	return authenticated_worksheet
-
-# Try to read a column from a recently authenticated worksheet with voter data
+# Try to read a column from a recently authenticated voter data worksheet
 def grab_col_safe(authenticated_worksheet, col_num):
 	if(WORKSHEET_TITLE == ''):
 		write_print("FATAL: Worksheet title does not exit")
 		sys.exit(-1)
 	times_attempted = 0
-	max_num_attempts = 10
+	max_num_attempts = 5
 	while(times_attempted < max_num_attempts):
 		try:
 			requested_col = authenticated_worksheet.col_values(col_num)
-			time.sleep(5) # Ensure we don't call Google APIs too rapidly
+			time.sleep(2) # Ensure we don't call Google APIs too rapidly
 			break
-		except: #Maybe we are using APIs too much. Try again in 1 minute
-			print "Unable to grab column. Maybe we are using APIs too much. Try again in 1 minute"
-			time.sleep(60)
-			worksheet = renewed_worksheet
+		except: #Maybe we are using APIs too much. Try again after waiting
+			print "Unable to grab column. Trying again..."
+			verify_internet_access()
+			time.sleep(10)
+			authenticated_worksheet = renewed_worksheet()
 			times_attempted = times_attempted + 1
-
-	return requested_col
-
+	if(times_attempted == max_num_attempts):
+		print "Unable to recover"
+	else:
+		return requested_col
+	
+# Try to read a row from a recently authenticated voter data worksheet
+def grab_row_safe(authenticated_worksheet, row_num):
+	if(WORKSHEET_TITLE == ''):
+		write_print("FATAL: Worksheet title does not exit")
+		sys.exit(-1)
+	times_attempted = 0
+	max_num_attempts = 5
+	while(times_attempted < max_num_attempts):
+		try:
+			requested_row = authenticated_worksheet.row_values(row_num)
+			time.sleep(2) # Ensure we don't call Google APIs too rapidly
+			break
+		except: #Maybe we are using APIs too much. Try again after waiting
+			print "Unable to grab row.  Trying again..."
+			verify_internet_access()
+			time.sleep(10)
+			authenticated_worksheet = renewed_worksheet()
+			times_attempted = times_attempted + 1
+	if(times_attempted == max_num_attempts):
+		print "Unable to recover"
+	else:
+		return requested_row
+	
 # Try to read all data from a recently authenticated worksheet with voter data
 def grab_all_data_safe(authenticated_worksheet):
 	if(WORKSHEET_TITLE == ''):
 		write_print("FATAL: Worksheet title does not exit")
 		sys.exit(-1)
 	times_attempted = 0
-	max_num_attempts = 10
+	max_num_attempts = 5
 	while(times_attempted < max_num_attempts):
 		try:
 			requested_data = authenticated_worksheet.get_all_values()
+			time.sleep(2) # Ensure we don't call Google APIs too rapidly
 			break
-		except: #Maybe we are using APIs too much. Try again in 1 minute
-			print "Unable to grab all data. Maybe we are using APIs too much. Try again in 1 minute"
-			time.sleep(60)
-			worksheet = renewed_worksheet
+		except: #Maybe we are using APIs too much. Try again after waiting
+			print "Unable to grab all data. Try again later"
+			verify_internet_access()
+			time.sleep(10)
+			authenticated_worksheet = renewed_worksheet()
 			times_attempted = times_attempted + 1
-
-	return requested_data
+	if(times_attempted == max_num_attempts):
+		print "Unable to recover"
+	else:
+		return requested_data
 
 # Try to update an entry in a worksheet hosting the voter data
 def update_worksheet_cell_safe(worksheet, row, col, new_val):
@@ -176,26 +235,60 @@ def update_worksheet_cell_safe(worksheet, row, col, new_val):
 		write_print("FATAL: Worksheet title does not exit")
 		sys.exit(-1)
 	times_attempted = 0
-	max_num_attempts = 10
+	max_num_attempts = 5
 	while(times_attempted < max_num_attempts):
 		try:
 			worksheet.update_cell(row, col, new_val)
-			time.sleep(5) # Ensure we don't call Google APIs too rapidly
+			time.sleep(2) # Ensure we don't call Google APIs too rapidly
 			break
 		except: #Maybe we are using APIs too much. Try again in 1 minute
-			print "Unable to update cell. Maybe we are using APIs too much. Try again in 1 minute"
-			time.sleep(60)
-			worksheet = renewed_worksheet
+			print "Unable to update cell. Try again later"
+			verify_internet_access()
+			time.sleep(10)
+			worksheet = renewed_worksheet()
 			times_attempted = times_attempted + 1
+	if(times_attempted == max_num_attempts):
+		print "Unable to recover"
 		
-	
+# Return the first row of the specified worksheet, this is the header info.
+# Need to reomve blank entries since Google spreadsheets pad blanks.
+def get_first_row(worksheet):
+	first_row = grab_row_safe(worksheet, 1)
+	index_of_blank = -1
+	for i in range(len(first_row)):
+		if(first_row[i] == ''):
+			index_of_blank = i
+			break
+	if(index_of_blank == -1):
+		return first_row
+	else:
+		return first_row[0:index_of_blank]
+
+# Grab the first row from the global variable all_data.
+# Reduces number of Google API calls
+def get_first_row_from_all_data():
+	global all_data
+	if(all_data == []):
+		print "FATAL: all data not loaded"
+		sys.exit(-1)
+	first_row = all_data[0]
+	# Account for padding
+	index_of_blank = -1
+	for i in range(len(first_row)):
+		if(first_row[i] == ''):
+			index_of_blank = i
+			break
+	if(index_of_blank == -1):
+		return first_row
+	else:
+		return first_row[0:index_of_blank]
+		
 # Ascertain the number of columns in the survey results spreadsheet.
 # We load this value in global memory to mitigate API calls later on.
 def get_num_columns():
 	global NUM_COLS
 	worksheet = renewed_worksheet()
-	all_data = grab_all_data_safe(worksheet)
-	first_row = all_data[0]
+	first_row = get_first_row(worksheet)
 	NUM_COLS = len(first_row)
 	
 # Returns the number of responses in the survey so far
@@ -263,11 +356,11 @@ def get_num_valid_responses():
 def email_recovery(server, FROM, TO, message, recipient):
 	# Perhaps it was a network error? Wait and try again
 	times_attempted = 1
-	max_attempts = 10
+	max_attempts = 5
 	while(times_attempted < max_attempts):
 		print "Previous email failed. Retying email to " + recipient
 		try:
-			time.sleep(30)
+			time.sleep(10)
 			server.sendmail(FROM, TO, message)
 			break
 		except:
@@ -275,7 +368,6 @@ def email_recovery(server, FROM, TO, message, recipient):
 	if(times_attempted == max_attempts):
 			print_write("FATAL: unable to send email to " + recipient)
 			server.quit()
-			print sys.exc_info()[0]
 			sys.exit(-1)
 			
 # If a voter ID is invalid, overwrite it with an error message and blacklist the vote
@@ -286,6 +378,9 @@ def identify_invalid_votes(num_responses):
 		sys.exit(-1)
 	elif(NUM_COLS == -1):
 		print_write("FATAL: number of spreadsheet columns not specified")
+		sys.exit(-1)
+	elif(all_data == []):
+		print_write("FATAL: voter data not loaded into global variable al_data")
 		sys.exit(-1)
 		
 	# Grab worksheet linked to the current survey
@@ -577,12 +672,12 @@ def get_results():
 		sys.exit(-1)
 		
 	worksheet = renewed_worksheet()
-	num_responses  = get_num_responses_on_recently_renewed_worksheet(worksheet)
+	num_responses = get_num_responses_on_recently_renewed_worksheet(worksheet)
 	
 	all_data = grab_all_data_safe(worksheet)
 	position_delimiters = []
 	position_encountered = {}
-	first_row = all_data[0]
+	first_row = get_first_row_from_all_data()
 	
 	position_names = []
 	candidates_adjoined = []
@@ -821,22 +916,49 @@ def verify_survey(survey_url):
 		sys.exit(-1)
 		
 # Make sure that the worksheet exists on the spreadsheet specified by LINKED_SPREADSHEET_KEY
-def verify_worksheet_title():
+def verify_voter_data_worksheet():
 	if(WORKSHEET_TITLE == ''):
 		write_print("FATAL: Global WORKSHEET_TITLE not populated")
 		sys.exit(-1)
 	try:
 		worksheet = renewed_worksheet()
-		first_col = grab_col_safe(worksheet, 1)
-		# Read through the first column for any existing data. Skip header info
-		for i in range(1, len(first_col)):	
-			if(first_col[i] != ''):
-				print_write("FATAL: specified worksheet is not blank. Do NOT reuse worksheets")
-				sys.exit(-1)
 	except:
 		print_write("Worksheet does not exist in spreadsheet. Exiting")
 		sys.exit(-1)
 
+	# Read back the election info so it can be confirmed
+	first_row = get_first_row(worksheet)
+	encountered_positions = []
+	candidates_per_position = []
+	candidate_names = []
+	for i in range(1, len(first_row) - 1):	# Skip timestamp entry and voter ID entry
+		parsed = first_row[i].split('[')
+		this_position = parsed[0]
+		this_candidate = (parsed[1])[:-1]
+		if this_position not in encountered_positions:
+			encountered_positions.append(this_position)
+			candidates_per_position.append(1)
+			candidate_names.append(this_candidate)
+		else:
+			candidates_per_position[-1] += 1
+			candidate_names[-1] += ", " + this_candidate
+	for i in range(len(encountered_positions)):
+		print "\nPosition #" + str(i) + ": " + encountered_positions[i]
+		print str(candidates_per_position[i]) + " candidates:"
+		print str(candidate_names[i])
+		
+	print "\nVoter ID column name:\n" + first_row[-1]
+	user_input = raw_input("\nConfirm the above information to continue [y/n] ")
+	if(user_input.lower() != 'y'):
+		sys.exit()
+		
+	# Read through the first column for any existing data. 
+	first_col = grab_col_safe(worksheet, 1)
+	for i in range(1, len(first_col)):	#Skip header info
+		if(first_col[i] != ''):
+			print_write("FATAL: specified worksheet is not blank. Do NOT reuse worksheets")
+			sys.exit(-1)
+			
 # Make sure that the gmail password associated with the host is correct
 def verify_gmail_pass(gmail_password):
 	try:
@@ -852,13 +974,14 @@ def verify_gmail_pass(gmail_password):
 		
 # Entry point
 if __name__ == "__main__":
+	verify_internet_access()
 	# URL retrived from manually-created Google survey 
 	survey_url = raw_input('Enter survey URL:') 
 	verify_survey(survey_url)
 	# Title of worksheet holding voter data.
 	# Established when creating the worksheet via Google form creation.
 	WORKSHEET_TITLE = raw_input('Enter worksheet title:') 
-	verify_worksheet_title()
+	verify_voter_data_worksheet()
 	# Password known by all members of the ExComm
 	gmail_password = getpass.getpass('[ECHO DISABLED] Enter averyexcomm password:')
 	verify_gmail_pass(gmail_password)
