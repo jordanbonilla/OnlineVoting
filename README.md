@@ -6,7 +6,7 @@
 3. Avery House glory.
 
 # Summary:
-This framework interfaces Google surveys with Python for a clean front end and back end. The voting system uses the IRV (instnt runoff voting) strategy. The workflow can be summarized as:
+This framework interfaces Google surveys with Python for a clean front end and back end. The voting system allows simple referendum voting as well as the more complex IRV (instnt runoff voting) strategy. The workflow can be summarized as:
 
 1. Manually create a Google survey and link it to a Google spreadsheet. Enter the link to the survey into the Python script.
 
@@ -44,18 +44,21 @@ This framework interfaces Google surveys with Python for a clean front end and b
 
 2. OAuth2 credentials in json format.
       - http://gspread.readthedocs.org/en/latest/oauth2.html
+      - Place the json file in the same directory as vote.py and update global variable in vote.py "SECRETS" to this filename
+      - It is recommended that you link the credentials to the same gmail account that sends the emails.
       - This step only needs to be completed once
 
 
 3. A linked Google spreadsheet that gives explicit edit access to the local machine running this code
       - Select "share" on the spreadsheet and manually add your authorized console email.
       - Should look something like this: local-xxxxxxxxxxxx.iam.gserviceaccount.com
+      - Update the global variable in vote.py "LINKED_SPREADSHEET_KEY" to have the key of this spreadsheet
       - This step only needs to be completed once
 
 
 4. A manually-created Google Survey
       - The survey must be a multiple choice grid 
-      - For every candidate, make a new column with a "rank"
+      - For every candidate, make a new column with a "rank" (Just 1 column for a simple referendum vote)
       - Ranks go from 1 to num_candidates with 1 being the best
       - Last question must be a short answer question that holds voter ID
       - Get the URL from the pre-fill link such that values appended to the URL automatically fill in "voter ID"
@@ -73,6 +76,10 @@ This framework interfaces Google surveys with Python for a clean front end and b
       ![alt tag](https://raw.githubusercontent.com/jordanbonilla/OnlineVoting/master/worksheet%20guide.png)
 
 # Notes:
-When choosing a local machine to run this script on, keep in mind that the script's execution can not be interrupted or the vote will end. Additionally, the script needs to internet access throughout the duration of its execution time so that it can actively check for vote manipulation. 
+When choosing a local machine to run this script on, keep in mind that the script's execution can not be interrupted or the vote will end. Additionally, the script needs to internet access throughout the duration of its execution time so that it can actively check for vote manipulation. If you are using Linux to run the script, I highly reccomend runing the script inside a tmux session to avoid accidentally canceling the script.
+
+The script's only security vulnerability lies in the possibility of someone modifying the script. It is thus highly reccomended that the script be downloaded directly from this repo and executed in plain sight of several representatives. 
+
+The last few numeric global variables may be tweaked to fit your survey's specific needs.
 
 The script should should be portable and has been tested on Windows 10 and Ubuntu 14
