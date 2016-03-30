@@ -78,7 +78,7 @@ This framework interfaces Google surveys with Python for a clean front end and b
 # Notes:
 When choosing a local machine to run this script on, keep in mind that the script's execution can not be interrupted or the vote will end. Additionally, the script needs to internet access throughout the duration of its execution time so that it can actively check for vote manipulation. If you are using Linux to run the script, I highly reccomend runing the script inside a tmux session to avoid accidentally canceling the script.
 
-The script's only security vulnerability lies in the possibility of someone modifying the script. It is thus highly reccomended that the script be downloaded directly from this repo and executed in plain sight of several representatives. 
+It is thus highly reccomended that the script be downloaded directly from this repo and executed in plain sight of several representatives to prevent illicit script modification. 
 
 The last few numeric global variables may be tweaked to fit your survey's specific needs.
 
