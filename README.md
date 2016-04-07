@@ -56,20 +56,26 @@ This framework interfaces Google surveys with Python for a clean front end and b
       - This step only needs to be completed once
 
 
-4. A manually-created Google Survey
-      - The survey must be a multiple choice grid 
-      - For every candidate, make a new column with a "rank" (Just 1 column for a simple referendum vote)
+4. A manually-created Google Survey (if you want to do an IRV vote)
+      - The survey questions must be multiple choice grids
+      - For every candidate, make a new column with a "rank"
       - Ranks go from 1 to num_candidates with 1 being the best
       - Last question must be a short answer question that holds voter ID
       - Get the URL from the pre-fill link such that values appended to the URL automatically fill in "voter ID"
       - This URL looks something like: https://docs.google.com/forms/d/xxx...xxx/viewform?entry.1299711861=
       - Required survey option: 1 response per column
       - Suggested survey options: shuffle row order, disable all confirmation page links
-      - Example of a valid Google survey: 
+      - Example of a valid IRV Google survey: 
       ![alt tag](https://raw.githubusercontent.com/jordanbonilla/OnlineVoting/master/example%20correct%20survey%20format.png)
 
+5. A manually-created Google Survey (If you want to do a simple referendum vote)
+      - The survey questions must be multiple choice 
+      - Last question must be a short answer question that holds voter ID
+      - Get the URL from the pre-fill link such that values appended to the URL automatically fill in "voter ID"
+      - This URL looks something like: https://docs.google.com/forms/d/xxx...xxx/viewform?entry.1299711861=
+      - Suggested survey options: shuffle question order, disable all confirmation page links
   
-5. A new, blank worksheet in your linked spreadsheet (step 3) with a unique name. 
+6. A new, blank worksheet in your linked spreadsheet (step 3) with a unique name. 
       - This worksheet must be created manually and specified as the data destination when creating the survey (step 4)
       - Trying to re-use worksheets will result in failure
       - This step must be completed for every new survey
