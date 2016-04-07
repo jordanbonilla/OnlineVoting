@@ -83,7 +83,7 @@ SCOPES = [ "https://docs.google.com/feeds/ https://spreadsheets.google.com/feeds
 # Key to Google spreadsheet that hosts the survey results. 
 # Must explicitly link to your local machine.
 LINKED_SPREADSHEET_KEY = "1Pfzdngzcxt94iFSpPxf88TyMehsUcLS-zf5TovR0Ks8"
-# Json file in current directory with oauth2 credentials. Downloaded from Google API dashboard
+# Json file in current directory with oauth2 credentials. Downloaded from Google API console
 SECRETS = "OnlineVoting-e363607f6925.json"
 # Holds the user-specified subject line for emails
 SUBJECT = ''
@@ -506,7 +506,7 @@ def email_results(gmail_password):
 	# Array of all filenames to send
 	all_files = []
 	
-	print_write("Creating xlsx file with vote data...")
+	print_write("\nCreating xlsx file with vote data...")
 	# Create an new Excel file and add a worksheet.
 	this_file_name = 'raw_votes.xlsx'
 	workbook = xlsxwriter.Workbook(this_file_name)
@@ -519,9 +519,11 @@ def email_results(gmail_password):
 	# Widen columns appropriately
 	for i in range(NUM_COLS):
 		if(i == 0):
-			output_xlsx_file.set_column(i,i, 20)
+			output_xlsx_file.set_column(i,i, 20) # timestamp col
+		elif(i == NUM_COLS - 1):
+			output_xlsx_file.set_column(i,i, VOTER_ID_LENGTH + 30) # voter ID col
 		else:
-			output_xlsx_file.set_column(i,i, len(all_data[0][i]))
+			output_xlsx_file.set_column(i,i, len(all_data[0][i])) # every other col
 	workbook.close()
 	print_write("SUCCESS!")
 	all_files.append(this_file_name)
@@ -605,9 +607,6 @@ def email_results(gmail_password):
 	delete_sent_folder(sender, gmail_password)
 	server.quit()
 
-	from time import sleep
-import sys
-	
 # Send links to the survey, along with the unique voter IDs (embedded in URL), and survey pin
 def email_the_links(gmail_password):
 	print_write("Sending emails to all eligible voters...")
@@ -635,6 +634,7 @@ def email_the_links(gmail_password):
 	unique_urls = []
 	# Generate voter IDs and pins
 	used_voter_ids = {}
+	message = None
 	for i in range(num_averites):
 		this_voter_id = random_with_N_digits(VOTER_ID_LENGTH)
 		while(this_voter_id in used_voter_ids):
@@ -680,10 +680,71 @@ def email_the_links(gmail_password):
 	delete_sent_folder(sender, gmail_password)
 	server.quit()
 
-# Read in results from spreadsheet holding voter data and calculate winners
-def get_results():
+# Read in results from spreadsheet holding voter data and calculate winners using a direct referendum vote
+def get_results_referendum():
 	global all_data
-	global VOTE_TYPE
+	if(WORKSHEET_TITLE == ''):
+		print_write("FATAL: no worksheet title specified")
+		sys.exit(-1)
+		
+	worksheet = renewed_worksheet()
+	num_responses = get_num_responses_on_recently_renewed_worksheet(worksheet)
+	
+	all_data = grab_all_data_safe(worksheet)
+	# Identify votes that are are invalid
+	identify_invalid_votes(num_responses) 
+	positions_encountered = {}
+	first_row = get_first_row_cleaned_from_all_data()
+	# Grab all position names
+	# Skip first col (timestamp), last col (unique ID)
+	for i in range(1, len(first_row) - 1):
+		this_position = first_row[i]
+		positions_encountered[this_position] = {}
+		relevant_dictionary = positions_encountered[this_position]
+		relevant_col = [row[i] for row in all_data]
+		# iterate over all votes for this position, skipping header element
+		for j in range(1, num_responses + 1):
+			this_vote = relevant_col[j]
+			if(j - 1 not in blacklist): # Blacklist uses index 0 for vote 0
+				if(this_vote not in relevant_dictionary):
+					relevant_dictionary[this_vote] = 1
+				else:
+					relevant_dictionary[this_vote] += 1	
+
+
+	print_write("Number of votes cast in this survey: " + str(num_responses))
+	num_invalid = len(blacklist)
+	print_write("Number of invalid votes: " + str(num_invalid))
+	print_write("Number of valid votes: " + str(num_responses - num_invalid))
+	print_write("Refer to raw vote data for more information")
+	position_names = positions_encountered.keys()
+	position_votes = positions_encountered.values()
+	num_positions = len(position_names)
+	print_write("Number of Propositions in this election: " + str(num_positions))
+
+
+	# Find the winners
+	percentage = ''
+	print_write('\nFinal Tally\n_____________________________________________')
+	for i in range(num_positions):
+		print_write("\nProposal: " + position_names[i])
+		all_votes_for_this_position = position_votes[i]
+		position_candidates = all_votes_for_this_position.keys()
+		position_candidate_counts = all_votes_for_this_position.values()
+		sum_counts = float(sum(position_candidate_counts))
+		for j in range(len(position_candidates)):
+			if(sum_counts is not 0):
+				percentage = str(position_candidate_counts[j] / sum_counts * 100.0)
+			else:
+				percentage = "inf"
+			print_write("    " + position_candidates[j] + ": " + str(position_candidate_counts[j]) + " (" + percentage + " %)")
+		print_write('\n_____________________________________________')
+
+
+
+# Read in results from spreadsheet holding voter data and calculate winners based on IRV strategy
+def get_results_IRV():
+	global all_data
 	if(WORKSHEET_TITLE == ''):
 		print_write("FATAL: no worksheet title specified")
 		sys.exit(-1)
@@ -693,7 +754,7 @@ def get_results():
 	
 	all_data = grab_all_data_safe(worksheet)
 	position_delimiters = []
-	position_encountered = {}
+	positions_encountered = {}
 	first_row = get_first_row_cleaned_from_all_data()
 	
 	position_names = []
@@ -706,7 +767,7 @@ def get_results():
 		this_candidate = parsed[1][:-1]
 		if(this_position not in position_names):
 			position_delimiters.append(i)
-			position_encountered[this_position] = True
+			positions_encountered[this_position] = True
 			position_names.append(this_position)
 			candidates_adjoined.append(this_candidate)
 			
@@ -716,7 +777,6 @@ def get_results():
 	print_write("Number of votes cast in this survey: " + str(num_responses))
 	# Identify votes that are are invalid
 	identify_invalid_votes(num_responses)
-
 	num_invalid = len(blacklist)
 	print_write("Number of invalid votes: " + str(num_invalid))
 	print_write("Number of valid votes: " + str(num_responses - num_invalid))
@@ -734,7 +794,7 @@ def get_results():
 			print_write("    Candidate #" + str(j + 1) + ": " + all_candidates_for_this_position[j])
 
 	# Find the winners
-	print_write('\nBegin Runoff\n_____________________________________________\n')
+	print_write('\nBegin Runoff\n_____________________________________________')
 	for i in range(num_positions):
 		print_write(position_names[i])
 		num_candidates = len(candidates_split[i])
@@ -751,24 +811,19 @@ def get_results():
 			for j in range(num_candidates):
 				if(j in remaining_candidates or count_spread[j] is not 0):
 					print_write("    " + candidates_split[i][j] + " - " + str(count_spread[j]))
+			print_write('');
 			for j in remaining_candidates:
 				if(len(remaining_candidates) == 1):
 					print_write("    CONGRATULATIONS WINNER: " + candidates_split[i][j])
-				elif(len(remaining_candidates) > 1 and VOTE_TYPE is "referendum"):
-					print_write("    TIE: " + candidates_split[i][j])
 				else:
 					print_write("    Advance: " + candidates_split[i][j])
 			round_num = round_num + 1
-			print_write('\n')
-			if(VOTE_TYPE is "referendum"):# Only 1 round in a referendum election
-				break
+			print_write('')
+		print_write('\n_____________________________________________')
 
-		print_write('_____________________________________________\n')
-
-# Perform one iteration/round of instant run off voting
+# Perform one iteration/round of instant run off voting. Used in IRV vote tabulation.
 def run_off(count_spread, remaining_candidates, start_index, num_candidates, \
 num_positions, num_responses):
-	global VOTE_TYPE
 	# Make sure data was read before this function was called
 	if(len(all_data) is 0):
 		print_write('FATAL: Worksheet not populated')
@@ -816,27 +871,11 @@ num_positions, num_responses):
 		if(count_spread[i] > max):
 			max = count_spread[i]
 			index_of_max = i
-	if(max * 2 > sum(count_spread) and VOTE_TYPE is "IRV"):
+	if(max * 2 > sum(count_spread)):
 		print_write('    Strict majority victory for candidate #' + str(index_of_max + 1))
 		# Remove all other candidates from "remaining_candidates" array
 		del remaining_candidates[:]
 		remaining_candidates.append(index_of_max)
-		return
-	
-	# If this is a referendum vote, decide the winner(s) now that we have the candidate with most votes
-	max_indices = []
-	for i in remaining_candidates:
-		if(count_spread[i] == index_of_max):
-			max_indices.append(i)
-	if(VOTE_TYPE is "referendum"):
-		del remaining_candidates[:]
-		for j in range(len(max_indices)):
-			remaining_candidates.append(max_indices[j])
-		try:
-			percent_vote = str(100.0 * float(count_spread[index_of_max]) / float(sum(count_spread))) + "%"
-		except:
-			percent_vote = "inf"
-		print_write('    Percent of total votes going to the majority candidate: ' + percent_vote)
 		return
 		
 	# No strict majority. Begin the elimination process (IRV only).
@@ -1031,28 +1070,28 @@ def verify_vote_type():
 if __name__ == "__main__":
 	verify_internet_access()
 	# URL retrived from manually-created Google survey 
-	survey_url = raw_input('Enter survey URL:') 
+	survey_url = "https://docs.google.com/forms/d/1bQlkC9wZrf5tsNgY7md4LOR_4AZWAbWGUiy4M0mqCaw/viewform?entry.2062142595=" #raw_input('Enter survey URL:') #@@@@@@@@@@@@@@@@@@@
 	verify_survey(survey_url)
 	# Check if this is an IRV vote or referendum so rules can be modified
-	VOTE_TYPE = raw_input('What type of vote is this ? [1(referendum)/ 2(IRV)]:')
+	VOTE_TYPE = raw_input('What type of vote is this ? [1(referendum)/ 2(IRV)]:') 
 	verify_vote_type()
 	# Title of worksheet holding voter data.
-	# Established when creating the worksheet via Google form creation.
+	# This title is established when creating the worksheet via Google form creation.
 	WORKSHEET_TITLE = raw_input('Enter worksheet title:') 
-	verify_voter_data_worksheet()
+	verify_voter_data_worksheet() 
 	# Password known by all members of the ExComm
-	gmail_password = getpass.getpass('[ECHO DISABLED] Enter averyexcomm password:')
+	gmail_password = getpass.getpass('[ECHO DISABLED] Enter averyexcomm password:') 
 	verify_gmail_pass(gmail_password)
 	# Subject as it will appear in emails
-	SUBJECT = raw_input('Enter email subject:')
-	
+	SUBJECT = raw_input('Enter email subject:') 
+
 	# Load all email addresses to be used in this survey into global variable "all_email_addresses"
 	get_all_elgible_email_address()
 	# Load the number of columns in the spreadsheet into global variable to minimize API calls
 	get_num_columns()
 	# All input params are good. Email links to the survey 
 	email_the_links(gmail_password)
-	
+
 	# Time-seed random values
 	random.seed
 	while(1):
@@ -1071,6 +1110,9 @@ if __name__ == "__main__":
 			print_write('Quorum Reached!')
 			break
 	# Read in results
-	get_results()
+	if VOTE_TYPE is "IRV":
+		get_results_IRV()
+	elif VOTE_TYPE is "referendum":
+		get_results_referendum()
 	# Email results
 	email_results(gmail_password)
