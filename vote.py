@@ -720,7 +720,7 @@ def get_results_referendum():
 	position_names = positions_encountered.keys()
 	position_votes = positions_encountered.values()
 	num_positions = len(position_names)
-	print_write("Number of Propositions in this election: " + str(num_positions))
+	print_write("Number of propositions to vote on: " + str(num_positions))
 
 
 	# Find the winners
@@ -1003,38 +1003,63 @@ def verify_voter_data_worksheet():
 		print_write("Worksheet does not exist in spreadsheet. Exiting")
 		sys.exit(-1)
 
-	# Read back the election info so it can be confirmed
-	first_row = get_first_row_cleaned(worksheet)
-	encountered_positions = []
-	candidates_per_position = []
-	candidate_names = []
-	for i in range(1, len(first_row) - 1):	# Skip timestamp entry and voter ID entry
-		parsed = first_row[i].split('[')
-		this_position = parsed[0]
-		this_candidate = (parsed[1])[:-1]
-		if this_position not in encountered_positions:
-			encountered_positions.append(this_position)
-			candidates_per_position.append(1)
-			candidate_names.append(this_candidate)
-		else:
-			candidates_per_position[-1] += 1
-			candidate_names[-1] += ", " + this_candidate
-	for i in range(len(encountered_positions)):
-		print "\nPosition #" + str(i) + ": " + encountered_positions[i]
-		print str(candidates_per_position[i]) + " candidates:"
-		print str(candidate_names[i])
-		
-	print "\nVoter ID column name:\n" + first_row[-1]
-	user_input = raw_input("\nConfirm the above information to continue [y/n] ")
-	if(user_input.lower() != 'y'):
-		sys.exit()
-		
-	# Read through the first column for any existing data. 
-	first_col = grab_col_safe(worksheet, 1)
-	for i in range(1, len(first_col)):	#Skip header info
-		if(first_col[i] != ''):
-			print_write("FATAL: specified worksheet is not blank. Do NOT reuse worksheets")
-			sys.exit(-1)
+	if(VOTE_TYPE is 'IRV'):
+		# Read back the election info so it can be confirmed
+		first_row = get_first_row_cleaned(worksheet)
+		encountered_positions = []
+		candidates_per_position = []
+		candidate_names = []
+		for i in range(1, len(first_row) - 1):	# Skip timestamp entry and voter ID entry
+			parsed = first_row[i].split('[')
+			this_position = parsed[0]
+			this_candidate = (parsed[1])[:-1]
+			if this_position not in encountered_positions:
+				encountered_positions.append(this_position)
+				candidates_per_position.append(1)
+				candidate_names.append(this_candidate)
+			else:
+				candidates_per_position[-1] += 1
+				candidate_names[-1] += ", " + this_candidate
+		for i in range(len(encountered_positions)):
+			print "\nPosition #" + str(i) + ": " + encountered_positions[i]
+			print str(candidates_per_position[i]) + " candidates:"
+			print str(candidate_names[i])
+			
+		print "\nVoter ID column name:\n" + first_row[-1]
+		user_input = raw_input("\nConfirm the above information to continue [y/n] ")
+		if(user_input.lower() != 'y'):
+			sys.exit()
+			
+		# Read through the first column for any existing data. 
+		first_col = grab_col_safe(worksheet, 1)
+		for i in range(1, len(first_col)):	#Skip header info
+			if(first_col[i] != ''):
+				print_write("FATAL: specified worksheet is not blank. Do NOT reuse worksheets")
+				sys.exit(-1)
+
+	elif(VOTE_TYPE is 'referendum'):
+		# Read back the election info so it can be confirmed
+		first_row = get_first_row_cleaned(worksheet)
+		encountered_positions = []
+		candidates_per_position = []
+		candidate_names = []
+		for i in range(1, len(first_row) - 1):	# Skip timestamp entry and voter ID entry
+			print "\nProposition #" + str(i) + ": " +first_row[i]
+			
+		print "\nVoter ID column name:\n" + first_row[-1]
+		user_input = raw_input("\nConfirm the above information to continue [y/n] ")
+		if(user_input.lower() != 'y'):
+			sys.exit()
+			
+		# Read through the first column for any existing data. 
+		first_col = grab_col_safe(worksheet, 1)
+		for i in range(1, len(first_col)):	#Skip header info
+			if(first_col[i] != ''):
+				print_write("FATAL: specified worksheet is not blank. Do NOT reuse worksheets")
+				sys.exit(-1)	
+	else:
+		print_write("Invalid vote type")
+		sys.exit(-1)
 			
 # Make sure that the gmail password associated with the host is correct
 def verify_gmail_pass(gmail_password):
@@ -1070,7 +1095,7 @@ def verify_vote_type():
 if __name__ == "__main__":
 	verify_internet_access()
 	# URL retrived from manually-created Google survey 
-	survey_url = "https://docs.google.com/forms/d/1bQlkC9wZrf5tsNgY7md4LOR_4AZWAbWGUiy4M0mqCaw/viewform?entry.2062142595=" #raw_input('Enter survey URL:') #@@@@@@@@@@@@@@@@@@@
+	survey_url = raw_input('Enter survey URL:')
 	verify_survey(survey_url)
 	# Check if this is an IRV vote or referendum so rules can be modified
 	VOTE_TYPE = raw_input('What type of vote is this ? [1(referendum)/ 2(IRV)]:') 
