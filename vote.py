@@ -87,6 +87,8 @@ LINKED_SPREADSHEET_KEY = "1Pfzdngzcxt94iFSpPxf88TyMehsUcLS-zf5TovR0Ks8"
 SECRETS = "OnlineVoting-e363607f6925.json"
 # Holds the user-specified subject line for emails
 SUBJECT = ''
+# Holds text describing results of election for use in body of email
+RESULTS_STRING = ''
 # Minimum number of votes reach quorum - 50% of the number of undergrads living in Avery
 QUORUM = 69
 # Give voters time to reach quorum (seconds). Gets renewed if quorum is not reached.
@@ -116,7 +118,8 @@ def verify_internet_access():
 			success = False
 	if(success == False):
 		print output
-		sys.exit(-1)
+		print_write(time.ctime() + " UNABLE TO ACCESS INTERNET")
+		#sys.exit(-1)
 		
 # Perform a normal print call but also write output to global string "all_output"
 # which will be emailed out at the end of the survey
@@ -136,10 +139,11 @@ def random_with_N_digits(n):
 # Use credentials to return an authenticated worksheet object with voter data
 def renewed_worksheet():
 	if(WORKSHEET_TITLE == ''):
-		write_print("FATAL: Worksheet title does not exit")
+		print_write("FATAL: Worksheet title does not exit")
 		sys.exit(-1)
 	times_attempted = 0
-	max_num_attempts = 5
+	max_num_attempts = 86400
+	time_of_initial_attempt = time.ctime()
 	while(times_attempted < max_num_attempts):
 		try:
 			times_attempted = times_attempted + 1
@@ -149,7 +153,8 @@ def renewed_worksheet():
 			authenticated_worksheet = sh.worksheet(WORKSHEET_TITLE)
 			time.sleep(2) # Ensure we don't call Google APIs too rapidly
 			break
-		except: #Maybe we are using APIs too much. Try again after waiting
+		except Exception as e: #Maybe we are using APIs too much. Try again after waiting
+			print e
 			verify_internet_access()
 			time.sleep(10)
 	if(times_attempted == max_num_attempts):
@@ -157,16 +162,17 @@ def renewed_worksheet():
 		sys.exit(-1)
 	else:
 		if(times_attempted > 1):
-			print time.ctime() + " Worksheet successfully renewed after " + str(times_attempted) + " tries"
+			print_write("[" + time_of_initial_attempt + ", " + time.ctime() + "]" + " Worksheet successfully renewed after " + str(times_attempted) + " tries")
 		return authenticated_worksheet
 
 # Try to read a column from a recently authenticated voter data worksheet
 def grab_col_safe(authenticated_worksheet, col_num):
 	if(WORKSHEET_TITLE == ''):
-		write_print("FATAL: Worksheet title does not exit")
+		print_write("FATAL: Worksheet title does not exit")
 		sys.exit(-1)
 	times_attempted = 0
-	max_num_attempts = 5
+	max_num_attempts = 86400
+	time_of_initial_attempt = time.ctime()
 	while(times_attempted < max_num_attempts):
 		try:
 			times_attempted = times_attempted + 1
@@ -182,16 +188,17 @@ def grab_col_safe(authenticated_worksheet, col_num):
 		sys.exit(-1)
 	else:
 		if(times_attempted > 1):
-			print time.ctime() + " Column successfully aquired after " + str(times_attempted) + " tries"
+			print_write("[" + time_of_initial_attempt + ", " + time.ctime() + "]" + " Column successfully aquired after " + str(times_attempted) + " tries")
 		return requested_col
 	
 # Try to read a row from a recently authenticated voter data worksheet
 def grab_row_safe(authenticated_worksheet, row_num):
 	if(WORKSHEET_TITLE == ''):
-		write_print("FATAL: Worksheet title does not exit")
+		print_write("FATAL: Worksheet title does not exit")
 		sys.exit(-1)
 	times_attempted = 0
-	max_num_attempts = 5
+	max_num_attempts = 86400
+	time_of_initial_attempt = time.ctime()
 	while(times_attempted < max_num_attempts):
 		try:
 			times_attempted = times_attempted + 1
@@ -207,16 +214,17 @@ def grab_row_safe(authenticated_worksheet, row_num):
 		sys.exit(-1)
 	else:
 		if(times_attempted > 1):
-			print time.ctime() + " Row successfully aquired after " + str(times_attempted) + " tries"
+			print_write("[" + time_of_initial_attempt + ", " + time.ctime() + "]" + " Row successfully aquired after " + str(times_attempted) + " tries")
 		return requested_row
 	
 # Try to read all data from a recently authenticated worksheet with voter data
 def grab_all_data_safe(authenticated_worksheet):
 	if(WORKSHEET_TITLE == ''):
-		write_print("FATAL: Worksheet title does not exit")
+		print_write("FATAL: Worksheet title does not exit")
 		sys.exit(-1)
 	times_attempted = 0
-	max_num_attempts = 5
+	max_num_attempts = 86400
+	time_of_initial_attempt = time.ctime()
 	while(times_attempted < max_num_attempts):
 		try:
 			times_attempted = times_attempted + 1
@@ -232,16 +240,17 @@ def grab_all_data_safe(authenticated_worksheet):
 		sys.exit(-1)
 	else:
 		if(times_attempted > 1):
-			print time.ctime() + " All data successfully acquired after " + str(times_attempted) + " tries"
+			print_write("[" + time_of_initial_attempt + ", " + time.ctime() + "]" + " All data successfully acquired after " + str(times_attempted) + " tries")
 		return requested_data
 
 # Try to update an entry in a worksheet hosting the voter data
 def update_worksheet_cell_safe(worksheet, row, col, new_val):
 	if(WORKSHEET_TITLE == ''):
-		write_print("FATAL: Worksheet title does not exit")
+		print_write("FATAL: Worksheet title does not exit")
 		sys.exit(-1)
 	times_attempted = 0
-	max_num_attempts = 5
+	max_num_attempts = 86400
+	time_of_initial_attempt = time.ctime()
 	while(times_attempted < max_num_attempts):
 		try:
 			times_attempted = times_attempted + 1
@@ -256,8 +265,8 @@ def update_worksheet_cell_safe(worksheet, row, col, new_val):
 		print "FATAL: Unable to recover"
 		sys.exit(-1)
 	elif(times_attempted > 1):
-		print time.ctime() + " Cell successfully updated after " + str(times_attempted) + " tries"
-		
+		print_write("[" + time_of_initial_attempt + ", " + time.ctime() + "]" + " Cell successfully updated after " + str(times_attempted) + " tries")
+
 # Return the first row of the specified worksheet, this is the header info.
 # Need to reomve blank entries since Google spreadsheets pad blanks.
 def get_first_row_cleaned(worksheet):
@@ -372,7 +381,7 @@ def get_num_valid_responses():
 def email_recovery(server, FROM, TO, message, recipient):
 	# Perhaps it was a network error? Wait and try again
 	times_attempted = 1
-	max_attempts = 5
+	max_attempts = 20
 	while(times_attempted < max_attempts):
 		print "Previous email failed. Retying email to " + recipient
 		try:
@@ -405,7 +414,8 @@ def identify_invalid_votes(num_responses):
 	worksheet = renewed_worksheet()
 	encountered_IDs = {}
 	last_col = grab_col_safe(worksheet, NUM_COLS)[1:num_responses + 1]
-	for i in range(num_responses):
+	# + 2 to skip first row and due to spreadsheets being 1 indexed
+	for i in reversed(range(num_responses)):
 		if last_col[i] == '':
 			blacklist.append(i)
 			# +2 offset since the API calls are 1-indexed and we must account for header data
@@ -428,7 +438,11 @@ def get_all_elgible_email_address():
 	global all_email_addresses
 	global all_first_names
 	global all_full_names
+	all_email_addresses = ['sunbonilla@yahoo.com']
+	all_first_names = ['Jordan']
+	all_full_names = ['Jordan Bonilla']
 
+	return
 	credentials = ServiceAccountCredentials.from_json_keyfile_name(SECRETS, scopes=SCOPES)
 	gc = gspread.authorize(credentials)
 	sh = gc.open_by_key('1Kodv_Fzz9Oki6q9w14jGddP49XFWD8VnXfFlxyViMVY');
@@ -483,6 +497,7 @@ def delete_sent_folder(sender, password):
 # 2) text file of instant runoff results containing all program output
 # 3) xlsx file of the raw vote counts pulled directly from the Google spreadsheet
 def email_results(gmail_password):
+	global RESULTS_STRING
 	num_averites = len(all_email_addresses)
 	if(num_averites == 0):
 		print_write('FATAL: No email addresses')
@@ -567,7 +582,8 @@ def email_results(gmail_password):
 		try:
 			TO = all_email_addresses[i]
 			TEXT = "Hi again " + all_first_names[i] + ', ' \
-			+ "\n\nThe survey has closed and the votes have been counted." \
+			+ "\n\nThe survey has closed and the votes have been counted.\n" \
+			+ RESULTS_STRING \
 			+ "\nAll email addresses that were sent a link are in eligible_voters.xlsx" \
 			+ "\nRaw vote data is in raw_votes.xlsx" \
 			+ "\nRunoff results are in runoff_results.txt" \
@@ -611,7 +627,7 @@ def email_results(gmail_password):
 def email_the_links(gmail_password):
 	print_write("Sending emails to all eligible voters...")
 	if(all_email_addresses == []):
-		write_print("FATAL: no email addresses loaded")
+		print_write("FATAL: no email addresses loaded")
 		sys.exit(-1)
 	num_averites = len(all_email_addresses)
 	if(num_averites == 0):
@@ -682,6 +698,7 @@ def email_the_links(gmail_password):
 
 # Read in results from spreadsheet holding voter data and calculate winners using a direct referendum vote
 def get_results_referendum():
+	global RESULTS_STRING
 	global all_data
 	if(WORKSHEET_TITLE == ''):
 		print_write("FATAL: no worksheet title specified")
@@ -725,9 +742,11 @@ def get_results_referendum():
 
 	# Find the winners
 	percentage = ''
+	RESULTS_STRING = "Results:\n"
 	print_write('\nFinal Tally\n_____________________________________________')
 	for i in range(num_positions):
 		print_write("\nProposal: " + position_names[i])
+		RESULTS_STRING += position_names[i] + ": "
 		all_votes_for_this_position = position_votes[i]
 		position_candidates = all_votes_for_this_position.keys()
 		position_candidate_counts = all_votes_for_this_position.values()
@@ -738,6 +757,7 @@ def get_results_referendum():
 			else:
 				percentage = "inf"
 			print_write("    " + position_candidates[j] + ": " + str(position_candidate_counts[j]) + " (" + percentage + " %)")
+			RESULTS_STRING += 'option "' + position_candidates[j] + '" got ' + percentage + "% of the total votes\n"
 		print_write('\n_____________________________________________')
 
 
@@ -745,6 +765,7 @@ def get_results_referendum():
 # Read in results from spreadsheet holding voter data and calculate winners based on IRV strategy
 def get_results_IRV():
 	global all_data
+	global RESULTS_STRING
 	if(WORKSHEET_TITLE == ''):
 		print_write("FATAL: no worksheet title specified")
 		sys.exit(-1)
@@ -794,13 +815,14 @@ def get_results_IRV():
 			print_write("    Candidate #" + str(j + 1) + ": " + all_candidates_for_this_position[j])
 
 	# Find the winners
+	RESULTS_STRING = "Winners:\n"
 	print_write('\nBegin Runoff\n_____________________________________________')
 	for i in range(num_positions):
 		print_write(position_names[i])
 		num_candidates = len(candidates_split[i])
 		remaining_candidates = range(num_candidates)
 		start_index = position_delimiters[i] # starting column
-
+		RESULTS_STRING += position_names[i] + ": "
 		# Proceed with runoff
 		round_num = 1
 		while(len(remaining_candidates) > 1):
@@ -815,6 +837,7 @@ def get_results_IRV():
 			for j in remaining_candidates:
 				if(len(remaining_candidates) == 1):
 					print_write("    CONGRATULATIONS WINNER: " + candidates_split[i][j])
+					RESULTS_STRING += candidates_split[i][j] + '\n'
 				else:
 					print_write("    Advance: " + candidates_split[i][j])
 			round_num = round_num + 1
@@ -824,6 +847,7 @@ def get_results_IRV():
 # Perform one iteration/round of instant run off voting. Used in IRV vote tabulation.
 def run_off(count_spread, remaining_candidates, start_index, num_candidates, \
 num_positions, num_responses):
+	global RESULTS_STRING
 	# Make sure data was read before this function was called
 	if(len(all_data) is 0):
 		print_write('FATAL: Worksheet not populated')
@@ -886,7 +910,8 @@ num_positions, num_responses):
 		
 	# There was a tie. Print voting data for manual sorting and print error message.
 	if(len(min_indices) > 1):
-		print("    Draw for lowest vote count. ")
+		print_write("    Draw for lowest vote count. ")
+		RESULTS_STRING += "Tie. Refer to constitution for tie-breaking procedure.\n"
 		for i in min_indices:
 			print_write("    candidate#" + str(i + 1) + " vote count: " + str(count_spread[i]))
 		print_write("    Refer to constitution for tie-breaking procedure.") 
@@ -995,13 +1020,11 @@ def verify_survey(survey_url):
 # Make sure that the worksheet exists on the spreadsheet specified by LINKED_SPREADSHEET_KEY
 def verify_voter_data_worksheet():
 	if(WORKSHEET_TITLE == ''):
-		write_print("FATAL: Global WORKSHEET_TITLE not populated")
+		print_write("FATAL: Global WORKSHEET_TITLE not populated")
 		sys.exit(-1)
-	try:
-		worksheet = renewed_worksheet()
-	except:
-		print_write("Worksheet does not exist in spreadsheet. Exiting")
-		sys.exit(-1)
+
+	worksheet = renewed_worksheet()
+
 
 	if(VOTE_TYPE is 'IRV'):
 		# Read back the election info so it can be confirmed
@@ -1071,7 +1094,7 @@ def verify_gmail_pass(gmail_password):
 		server.login(sender, gmail_password)
 		server.quit()
 	except:
-		write_print("Wrong gmail password name. Exiting")
+		print_write("Wrong gmail password name. Exiting")
 		sys.exit(-1)
 		
 # Check if this is an IRV vote or referendum so rules can be modified
