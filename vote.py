@@ -438,11 +438,7 @@ def get_all_elgible_email_address():
 	global all_email_addresses
 	global all_first_names
 	global all_full_names
-	all_email_addresses = ['sunbonilla@yahoo.com']
-	all_first_names = ['Jordan']
-	all_full_names = ['Jordan Bonilla']
 
-	return
 	credentials = ServiceAccountCredentials.from_json_keyfile_name(SECRETS, scopes=SCOPES)
 	gc = gspread.authorize(credentials)
 	sh = gc.open_by_key('1Kodv_Fzz9Oki6q9w14jGddP49XFWD8VnXfFlxyViMVY');
