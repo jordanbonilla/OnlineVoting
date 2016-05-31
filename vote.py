@@ -658,11 +658,15 @@ def email_the_links(gmail_password):
 		
 	BODY = \
 			textwrap.fill("This is a unique link assigned to you. For this reason, " \
-			+ "do not share this link or forward this email to anyone else. If you are not" \
-			+ " a current Averite or know of a current Averite who did not receive a voting " \
-			+ "link, please contact a member of ExComm so we can correct the eligible voter" \
-			+ " mailing list. Lastly, please save this email message so that you have your" \
-			+ " unique pin and url on file should a vote's legitimacy fall into question.") \
+			+ "please do not share this link or forward this email to anyone else. " \
+			+ "If quorum has not been reached in 24 hours, the voting period will continue " \
+			+ "to be extended in 24-hour increments until quorum is reached. You may change " \
+			+ "your vote by re-voting with your unique link before the voting period ends. " \
+			+ "If you are not a current Averite or know of a current Averite who did not " \
+			+ "receive a link to vote, please contact a member of ExComm so we can correct " \
+			+ "the eligible voter mailing list. Lastly, please save this email message so " \
+			+ "that you have your unique pin and url on file should a vote's legitimacy " \
+			+ "fall into question.") \
 			
 	for i in range(num_averites):
 		try:
