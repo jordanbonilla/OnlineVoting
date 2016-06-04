@@ -19,7 +19,7 @@ This framework interfaces Google surveys with Python for a clean front end and b
 
 # Security and anonymity:
 
-1. The python script generates a unique 128-digit-time-seeded random int for each email address that is eligible to vote. This number is embedded in the URL of the Google survey link and is automatically added to the “voter ID” field in the survey. When votes are read from the Python script, it will check the “voter ID” field of submitted votes and confirm that they corresponding to originally-generated ID.This makes it so duplicate/unauthorized votes can be invalidated.
+1. The python script generates a unique 128-digit-time-seeded random int for each email address that is eligible to vote. This number is embedded in the URL of the Google survey link and is automatically added to the “voter ID” field in the survey. When votes are read from the Python script, it will check the “voter ID” field of submitted votes and confirms that they corresponding to originally-generated ID.This makes it so duplicate/unauthorized votes can be invalidated.
 
 2. Every email also contains a randomly-generated 4 digit pin which represents the survey ID. This survey ID is sent in the initial email as well as the results email. Every voter should see the same survey ID but different voters see differnt survey IDs. The purpose of the survey ID is prevent a scenario where someone termiantes the script and sends out fake results emails.
 
