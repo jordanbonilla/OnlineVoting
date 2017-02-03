@@ -909,7 +909,7 @@ num_positions, num_responses):
 			min_indices.append(i)
 		
 	# There was a tie. Print voting data for manual sorting and print error message.
-	if(len(min_indices) > 1):
+	if(len(min_indices) > 1 and len(remaining_candidates) == len(min_indices)):
 		print_write("    Draw for lowest vote count. ")
 		RESULTS_STRING += "Tie. Refer to constitution for tie-breaking procedure.\n"
 		for i in min_indices:
@@ -933,7 +933,8 @@ num_positions, num_responses):
 		del remaining_candidates[:]
 	# There was no tie. Exactly one candidate to eliminate
 	else:	
-		remaining_candidates.remove(min_indices[0])
+		for index in min_indices:
+		remaining_candidates.remove(index)
 
 # Comapre a list of verified votes with the current set of votes to make sure the current
 # set of votes is a superset of the verified set of votes
