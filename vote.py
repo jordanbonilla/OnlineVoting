@@ -934,7 +934,7 @@ num_positions, num_responses):
 	# There was no tie. Exactly one candidate to eliminate
 	else:	
 		for index in min_indices:
-		remaining_candidates.remove(index)
+			remaining_candidates.remove(index)
 
 # Comapre a list of verified votes with the current set of votes to make sure the current
 # set of votes is a superset of the verified set of votes
